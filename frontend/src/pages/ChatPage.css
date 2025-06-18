@@ -124,3 +124,44 @@
   background-color: #aaa;
   cursor: not-allowed;
 }
+
+.sidebar-toggle-button {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+.sidebar-toggle-button:hover {
+  background-color: #f0f0f0;
+}
+.sidebar-toggle-button svg {
+  stroke: #333;
+}
+
+/* O título agora ocupa o espaço central */
+.chat-header h1 {
+  margin: 0;
+  font-size: 1.25em;
+  text-align: center; /* Centraliza o título */
+  flex-grow: 1; /* Faz o título ocupar todo o espaço do meio */
+}
+
+/* O botão de logout fica na extrema direita */
+.logout-button {
+  padding: 8px 16px;
+  border: none;
+  background-color: #dc3545;
+  color: white;
+  border-radius: 20px;
+  cursor: pointer;
+  font-weight: bold;
+  margin-left: auto; /* Truque de flexbox para empurrar para a direita */
+}
+.logout-button:hover {
+  background-color: #c82333;
+}

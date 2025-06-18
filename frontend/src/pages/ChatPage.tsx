@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './ChatPage.css';
 import ConversationSidebar from '../components/ConversationSidebar';
+import Modal from '../components/Modal';
 
 interface Message {
   id: string;
@@ -13,10 +14,20 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  // `activeConversationId` agora controla qual chat está ativo. `null` significa um novo chat.
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [conversationToDelete, setConversationToDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
 
   const messageListRef = useRef<HTMLDivElement>(null);
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(prev => !prev);
+  };
 
   useEffect(() => {
     if (messageListRef.current) {
@@ -24,29 +35,22 @@ export default function ChatPage() {
     }
   }, [messages]);
 
-  // Função para lidar com a seleção de uma conversa na sidebar
   const handleSelectConversation = async (id: string) => {
-    if (isLoading) return;
+    if (isLoading && id !== activeConversationId) return;
 
     setIsLoading(true);
     setActiveConversationId(id);
     setMessages([]);
-
     try {
       const response = await fetch(`/api/conversations/${id}/messages`);
-      if (!response.ok) throw new Error('Falha ao carregar o histórico.');
+      if (!response.ok) throw new Error('Falha ao carregar histórico.');
 
       const historyData = await response.json();
-
-      // LÓGICA CORRIGIDA E SIMPLIFICADA
-      // O backend já nos dá os dados no formato { id, sender, text }
-      // Apenas precisamos garantir que o tipo do sender esteja correto para o nosso estado.
       const formattedMessages: Message[] = historyData.map((msg: any) => ({
-        id: msg.id,
-        sender: msg.sender, // O sender já vem como 'user' ou 'ai'
+        id: msg.id.toString(),
+        sender: msg.sender,
         text: msg.text,
       }));
-
       setMessages(formattedMessages);
     } catch (error: any) {
       setMessages([{ id: 'err-1', sender: 'status', text: error.message }]);
@@ -55,7 +59,6 @@ export default function ChatPage() {
     }
   };
 
-  // Função CORRIGIDA para o botão "Novo Chat"
   const handleNewChat = () => {
     setActiveConversationId(null);
     setMessages([]);
@@ -70,9 +73,9 @@ export default function ChatPage() {
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
-    const userMessage: Message = { id: `user-${Date.now()}`, sender: 'user', text: inputValue };
-    setMessages(prev => [...prev, userMessage]);
     const currentInput = inputValue;
+    const userMessage: Message = { id: `user-${Date.now()}`, sender: 'user', text: currentInput };
+    setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
@@ -84,17 +87,15 @@ export default function ChatPage() {
       });
 
       if (!postResponse.ok) throw new Error('Falha ao enviar a mensagem.');
-
       const postData = await postResponse.json();
       const currentConvId = postData.conversationId;
 
-      // Se era um novo chat, agora ele tem um ID e se torna o chat ativo
       if (!activeConversationId) {
         setActiveConversationId(currentConvId);
+        setRefetchTrigger(prev => prev + 1);
       }
 
       const eventSource = new EventSource(`/api/chat/stream/${currentConvId}`);
-
       const aiMessageId = `ai-${Date.now()}`;
       setMessages(prev => [...prev, { id: aiMessageId, sender: 'ai', text: '' }]);
 
@@ -117,13 +118,8 @@ export default function ChatPage() {
             break;
         }
       };
-
       eventSource.onerror = () => {
-        updateMessageById(msg => ({
-          ...msg,
-          sender: 'status',
-          text: 'Erro de conexão com o servidor.',
-        }));
+        updateMessageById(msg => ({ ...msg, sender: 'status', text: 'Erro de conexão.' }));
         eventSource.close();
         setIsLoading(false);
       };
@@ -136,16 +132,87 @@ export default function ChatPage() {
     }
   };
 
+  const openDeleteModal = (id: string, title: string) => {
+    setConversationToDelete({ id, title });
+    setIsModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    setIsModalOpen(false);
+    setConversationToDelete(null);
+  };
+
+  const confirmDelete = async () => {
+    if (!conversationToDelete) return;
+    try {
+      const response = await fetch(`/api/conversations/${conversationToDelete.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Falha ao apagar a conversa.');
+
+      handleNewChat();
+      setRefetchTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Erro ao deletar conversa:', error);
+    } finally {
+      closeDeleteModal();
+    }
+  };
+
   return (
     <div className="page-layout">
-      {/* Passamos a função corrigida para a sidebar */}
       <ConversationSidebar
+        isOpen={isSidebarOpen}
         onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
+        onDeleteConversation={openDeleteModal}
         activeConversationId={activeConversationId}
+        refetchTrigger={refetchTrigger}
       />
       <div className="chat-page">
         <header className="chat-header">
+          <button
+            onClick={toggleSidebar}
+            className="sidebar-toggle-button"
+            title={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+          >
+            {/* --- LÓGICA DE TROCA DE ÍCONE AQUI --- */}
+            {isSidebarOpen ? (
+              // Ícone "X" (fechar)
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            ) : (
+              // Ícone "Menu" (abrir)
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
+            )}
+          </button>
+
           <h1>Garimpo ⛏️</h1>
           <button onClick={handleLogout} className="logout-button">
             Sair
@@ -184,6 +251,19 @@ export default function ChatPage() {
           </button>
         </footer>
       </div>
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={closeDeleteModal}
+        onConfirm={confirmDelete}
+        title="Confirmar Exclusão"
+      >
+        <p>
+          Você tem certeza que deseja apagar a conversa "
+          <strong>{conversationToDelete?.title}</strong>"?
+        </p>
+        <p>Esta ação não pode ser desfeita.</p>
+      </Modal>
     </div>
   );
 }
