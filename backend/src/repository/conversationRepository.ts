@@ -154,3 +154,21 @@ export const getMessagesByConversationId = async (conversationId: string, userId
     text: row.message_text,
   }));
 };
+
+export const deleteConversation = async (conversationId: string, userId: string) => {
+  // A verificação de propriedade é crucial para segurança.
+  const ownerId = await getConversationOwner(conversationId);
+  if (ownerId !== userId) {
+    throw new Error('Acesso negado.');
+  }
+
+  try {
+    const query = `DELETE FROM conversations WHERE id = $1;`;
+    await pool.query(query, [conversationId]);
+    console.log(`[Repo] Conversa ${conversationId} deletada.`);
+    return { success: true };
+  } catch (error) {
+    console.error(`Erro ao deletar conversa ${conversationId}:`, error);
+    throw new Error('Não foi possível deletar a conversa.');
+  }
+};

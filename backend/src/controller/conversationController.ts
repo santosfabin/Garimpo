@@ -26,3 +26,19 @@ export const getConversationMessages = async (req: Request, res: Response) => {
     return res.status(403).json({ error: error.message });
   }
 };
+
+export const removeConversation = async (req: Request, res: Response) => {
+  try {
+    const userId = getUserIdFromToken(req.cookies.session_id);
+    if (!userId) return res.status(401).json({ error: 'Usuário não autenticado.' });
+
+    const { conversationId } = req.params;
+    await conversationRepo.deleteConversation(conversationId, userId);
+
+    return res.status(200).json({ message: 'Conversa deletada com sucesso.' });
+  } catch (error: any) {
+    // Se o erro for de "Acesso negado", retorna 403, senão 500.
+    const statusCode = error.message === 'Acesso negado.' ? 403 : 500;
+    return res.status(statusCode).json({ error: error.message });
+  }
+};
