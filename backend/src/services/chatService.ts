@@ -3,7 +3,7 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/
 import * as tmdbService from './tmdbService';
 import config from '../config';
 import * as conversationRepo from '../repository/conversationRepository';
-import { Response } from 'express'; // Importamos o tipo Response do Express
+import { Response } from 'express';
 
 // --- CONFIGURAÇÃO DO MODELO E FERRAMENTAS ---
 
@@ -56,114 +56,84 @@ const llmWithTools = llm.bind({
 // --- LÓGICA DO AGENTE MANUAL ---
 
 const runManualAgent = async (
-  chatHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[],
-  res: Response
-) => {
-  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-  // PRIMEIRA CHAMADA: IA decide o que fazer
+  chatHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[]
+): Promise<string> => {
   const firstResponse = await llmWithTools.invoke(chatHistory);
   const toolCalls = firstResponse.additional_kwargs.tool_calls;
 
-  // SE A IA PEDIU UMA FERRAMENTA...
   if (toolCalls && toolCalls.length > 0) {
-    console.log('[Manual Agent] IA solicitou o uso de ferramentas.');
+    console.log(`[Manual Agent] IA solicitou o uso de ${toolCalls.length} ferramenta(s).`);
 
-    // Mostra o status para o frontend
-    const toolName = toolCalls[0].function.name;
-    sendEvent({ type: 'status', message: `Garimpando com a ferramenta: ${toolName}...` });
+    const historyForSecondCall = [...chatHistory, firstResponse];
 
-    // Lógica para executar a ferramenta
-    const toolCall = toolCalls[0];
-    const toolArgs = JSON.parse(toolCall.function.arguments);
-    let toolOutput: any;
+    const toolOutputs = await Promise.all(
+      toolCalls.map(async (toolCall: any) => {
+        const toolName = toolCall.function.name;
+        const toolArgs = JSON.parse(toolCall.function.arguments);
+        let output: any;
 
-    if (toolName === 'search_movies_by_keyword') {
-      toolOutput = await tmdbService.searchMoviesByKeyword(toolArgs.query);
-    } else if (toolName === 'get_movie_details') {
-      toolOutput = await tmdbService.getMovieDetails(toolArgs.title);
-    } else if (toolName === 'discover_movies') {
-      toolOutput = await tmdbService.discoverMovies(toolArgs);
-    } else {
-      toolOutput = `Ferramenta desconhecida: ${toolName}`;
-    }
-
-    const finalHistory = [
-      ...chatHistory,
-      firstResponse,
-      new ToolMessage({
-        content: JSON.stringify(toolOutput),
-        tool_call_id: toolCall.id,
-      }),
-    ];
-
-    // SEGUNDA CHAMADA: AGORA USANDO .stream() PARA OBTER A RESPOSTA FINAL
-    console.log(
-      '[Manual Agent] Enviando resultado da ferramenta e fazendo stream da resposta final...'
+        console.log(`[Manual Agent] Executando ferramenta: ${toolName} com args:`, toolArgs);
+        if (toolName === 'search_movies_by_keyword') {
+          output = await tmdbService.searchMoviesByKeyword(toolArgs.query);
+        } else if (toolName === 'get_movie_details') {
+          output = await tmdbService.getMovieDetails(toolArgs.title);
+        } else if (toolName === 'discover_movies') {
+          output = await tmdbService.discoverMovies(toolArgs);
+        } else {
+          output = `Ferramenta desconhecida: ${toolName}`;
+        }
+        return new ToolMessage({ content: JSON.stringify(output), tool_call_id: toolCall.id });
+      })
     );
-    const finalResponseStream = await llmWithTools.stream(finalHistory);
 
-    let fullResponse = '';
-    // Iteramos sobre cada pedaço de texto que o LLM envia
-    for await (const chunk of finalResponseStream) {
-      const content = chunk.content.toString();
-      if (content) {
-        fullResponse += content;
-        sendEvent({ type: 'chunk', content: content });
-      }
-    }
-    return fullResponse; // Retorna a resposta completa para ser salva no DB
+    historyForSecondCall.push(...toolOutputs);
+
+    const finalResponse = await llmWithTools.invoke(historyForSecondCall);
+    return finalResponse.content.toString();
   } else {
-    // SE A IA RESPONDEU DIRETAMENTE, fazemos o stream da resposta dela
-    const content = firstResponse.content.toString();
-    if (content) {
-      sendEvent({ type: 'chunk', content });
-    }
-    return content;
+    return firstResponse.content.toString();
   }
 };
 
 // --- FUNÇÕES EXPORTADAS ---
 
-/**
- * Função principal que gerencia o streaming da resposta para o cliente.
- * @param conversationId O ID da conversa a ser processada.
- * @param res O objeto de resposta do Express, para que possamos escrever o stream nele.
- */
 export const streamResponse = async (conversationId: string, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
   try {
     const chatHistory = await conversationRepo.getHistory(conversationId);
     const fullHistory = [
-      new SystemMessage("Você é 'Garimpo'..."), // etc.
+      new SystemMessage(
+        "Você é 'Garimpo', um assistente de cinema divertido e especialista. Seu único propósito é ajudar usuários a encontrar os melhores filmes. Responda sempre em português do Brasil. Se o usuário perguntar sobre qualquer outro assunto que não seja filmes, séries ou cinema, recuse educadamente a pergunta e o lembre de seu propósito."
+      ),
       ...chatHistory,
     ];
 
-    // A função runManualAgent agora gerencia o stream e retorna a resposta completa
-    const finalAnswer = await runManualAgent(fullHistory, res);
+    const finalAnswer = await runManualAgent(fullHistory);
 
-    // Salvamos a resposta completa no banco de dados APÓS o stream ter terminado
-    if (typeof finalAnswer === 'string' && finalAnswer.length > 0) {
+    if (finalAnswer) {
       await conversationRepo.addMessage(conversationId, 'ai', finalAnswer);
-      console.log(`[Service] Resposta final salva na conversa ${conversationId}`);
+    }
+
+    const chunks = finalAnswer.split(' ');
+    for (const chunk of chunks) {
+      sendEvent({ type: 'chunk', content: chunk + ' ' });
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
   } catch (error) {
     console.error('Erro durante o processamento do stream:', error);
-    res.write(`data: ${JSON.stringify({ type: 'error', message: 'Ocorreu um erro.' })}\n\n`);
+    sendEvent({ type: 'error', message: 'Ocorreu um erro ao processar sua solicitação.' });
   } finally {
-    // Envia um evento final para o cliente e fecha a conexão.
-    res.write(`data: ${JSON.stringify({ type: 'close' })}\n\n`);
+    sendEvent({ type: 'close' });
     res.end();
   }
 };
 
-/**
- * Usa o LLM para gerar um título conciso para uma nova conversa.
- */
 export const generateTitle = async (firstMessage: string): Promise<string> => {
   console.log('[chatService] Gerando título para a nova conversa...');
   const titleLlm = new ChatOpenAI({
