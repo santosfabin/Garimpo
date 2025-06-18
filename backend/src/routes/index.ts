@@ -7,6 +7,7 @@ const users = require('./users');
 const login = require('./login');
 const logout = require('./logout');
 const chat = require('./chat');
+const conversations = require('./conversations');
 
 router.use('/users', users);
 router.use('/login', login);
@@ -16,5 +17,6 @@ router.use(verifyActiveSession);
 
 router.use('/logout', logout);
 router.use('/chat', chat);
+router.use('/conversations', conversations);
 
 export default router;

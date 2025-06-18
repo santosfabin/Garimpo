@@ -1,4 +1,5 @@
 import pool from '../database/connection';
+import { PoolClient } from 'pg';
 import { HumanMessage, AIMessage } from '@langchain/core/messages';
 
 /**
@@ -30,16 +31,26 @@ export const createConversation = async (userId: string, title: string) => {
  * @param text - O conteúdo da mensagem.
  */
 export const addMessage = async (conversationId: string, sender: 'user' | 'ai', text: string) => {
+  const client: PoolClient = await pool.connect();
   try {
-    const query = `
-      INSERT INTO messages (conversation_id, sender, message_text) 
-      VALUES ($1, $2, $3);
-    `;
-    await pool.query(query, [conversationId, sender, text]);
-    console.log(`[Repo] Mensagem do tipo '${sender}' adicionada à conversa ${conversationId}`);
+    await client.query('BEGIN'); // Inicia a transação
+
+    const updateQuery = `UPDATE conversations SET updated_at = NOW() WHERE id = $1;`;
+    await client.query(updateQuery, [conversationId]);
+
+    const insertQuery = `INSERT INTO messages (conversation_id, sender, message_text) VALUES ($1, $2, $3);`;
+    await client.query(insertQuery, [conversationId, sender, text]);
+
+    await client.query('COMMIT'); // Confirma a transação
+    console.log(
+      `[Repo] Mensagem do tipo '${sender}' adicionada e conversa ${conversationId} atualizada.`
+    );
   } catch (error) {
+    await client.query('ROLLBACK'); // Desfaz a transação em caso de erro
     console.error('Erro ao adicionar mensagem no repositório:', error);
     throw new Error('Não foi possível salvar a mensagem.');
+  } finally {
+    client.release(); // Libera o cliente de volta para o pool
   }
 };
 
@@ -97,4 +108,49 @@ export const getHistory = async (conversationId: string): Promise<(HumanMessage 
     console.error('Erro ao recuperar histórico no repositório:', error);
     throw new Error('Não foi possível recuperar o histórico da conversa.');
   }
+};
+
+/**
+ * NOVA FUNÇÃO: Busca todas as conversas de um usuário, ordenadas pela mais recente.
+ */
+export const getConversationsForUser = async (userId: string) => {
+  try {
+    const query = `
+      SELECT id, title 
+      FROM conversations 
+      WHERE user_id = $1 
+      ORDER BY updated_at DESC;
+    `;
+    const { rows } = await pool.query(query, [userId]);
+    return rows;
+  } catch (error) {
+    console.error('Erro ao buscar conversas do usuário:', error);
+    throw new Error('Não foi possível carregar as conversas.');
+  }
+};
+
+/**
+ * NOVA FUNÇÃO: Busca todas as mensagens de uma conversa (semelhante ao getHistory, mas para o endpoint)
+ */
+export const getMessagesByConversationId = async (conversationId: string, userId: string) => {
+  const ownerId = await getConversationOwner(conversationId);
+  if (ownerId !== userId) {
+    throw new Error('Acesso negado.');
+  }
+
+  // Lógica de busca do histórico
+  const query = `
+    SELECT id, sender, message_text 
+    FROM messages 
+    WHERE conversation_id = $1 
+    ORDER BY timestamp ASC;
+  `;
+  const { rows } = await pool.query(query, [conversationId]);
+
+  // Retorna os dados brutos do banco, que são mais fáceis de usar no frontend
+  return rows.map(row => ({
+    id: row.id,
+    sender: row.sender,
+    text: row.message_text,
+  }));
 };
