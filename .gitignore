@@ -1,0 +1,20 @@
+# Ignorar dependências e arquivos de build do Backend
+/backend/node_modules/
+/backend/dist/
+/backend/.env
+
+# Ignorar dependências e arquivos de build do Frontend
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.next/
+/frontend/.vercel/
+/frontend/.env*
+
+# Logs gerais
+*.log
+
+# Arquivos de Sistema Operacional
+.DS_Store
+
+# Diretórios de IDEs
+.vscode/

@@ -1,0 +1,12 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.env
+dist/ # Se os arquivos compilados são gerados no host e você não quer versioná-los
+coverage/
+
+# IDEs and other
+.vscode/
+.DS_Store
+*.log

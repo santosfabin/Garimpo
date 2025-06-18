@@ -1,0 +1,8 @@
+.git/
+.gitignore
+.env
+node_modules/ # IMPORTANTE: Se você faz `npm install` dentro do Dockerfile
+dist/         # Se você confia que `npm run dev` no container vai gerar a `dist` corretamente e não precisa da `dist` local sendo copiada
+README.md
+docker-compose.yml
+*.log

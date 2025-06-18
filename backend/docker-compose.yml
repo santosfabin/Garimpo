@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:14-alpine
+    container_name: postgres_db
+    env_file:
+      - ./.env
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: always
+
+  backend-web:
+    build: .
+    env_file:
+      - ./.env
+    ports:
+      - '7000:7000'
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./src:/usr/src/app/src
+    depends_on:
+      - db
+    restart: always
+
+volumes:
+  db_data:
