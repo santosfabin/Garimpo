@@ -1,0 +1,173 @@
+/* Animações (podem ser compartilhadas, mas mantemos aqui por simplicidade) */
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -60%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@keyframes aurora {
+  from {
+    background-position: 50% 50%, 50% 50%;
+  }
+  to {
+    background-position: 350% 50%, 350% 50%;
+  }
+}
+
+/* Estilo da Página */
+.register-page {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100%;
+  background-color: #0b0b0f;
+  overflow: hidden;
+}
+
+/* Efeito Aurora */
+.register-page::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(
+      at 20% 80%,
+      hsla(260, 93%, 48%, 0.3) 0px,
+      transparent 50%
+    ),
+    radial-gradient(at 80% 20%, hsla(330, 70%, 45%, 0.3) 0px, transparent 50%),
+    radial-gradient(at 20% 20%, hsla(210, 85%, 45%, 0.3) 0px, transparent 50%);
+  filter: blur(80px);
+  will-change: background-position;
+  animation: aurora 20s linear infinite;
+}
+
+/* Card de Cadastro */
+.register-card {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  max-width: 420px; /* Um pouco mais largo para acomodar o campo extra */
+  padding: 40px;
+  background: rgba(16, 18, 27, 0.4);
+  backdrop-filter: blur(16px) saturate(120%);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 80px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  animation: fadeInDown 0.7s ease-out forwards;
+}
+
+.register-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.register-title {
+  color: #f0f0f0;
+  font-size: 2.2em;
+  font-weight: 700;
+  margin: 0;
+}
+
+.register-subtitle {
+  color: #a0a0a0;
+  margin-top: 8px;
+  font-size: 1em;
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 25px;
+}
+
+.input-group {
+  position: relative;
+}
+
+.register-input {
+  width: 100%;
+  padding: 14px 16px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1em;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.register-input::placeholder {
+  color: #6a6a6a;
+}
+
+.register-input:focus {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.7);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.register-button {
+  padding: 15px;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: bold;
+  font-size: 1.1em;
+  cursor: pointer;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  transition: transform 0.2s ease, box-shadow 0.3s ease;
+  margin-top: 20px;
+}
+
+.register-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+}
+
+.register-button:disabled {
+  background: #2a2b32;
+  color: #6a6a6a;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.error-message {
+  color: #f87171;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 10px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.switch-page-link {
+  margin-top: 30px;
+  text-align: center;
+  color: #a0a0a0;
+  font-size: 0.9em;
+}
+
+.switch-page-link a {
+  color: #818cf8;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.switch-page-link a:hover {
+  text-decoration: underline;
+}

@@ -4,5 +4,16 @@ body {
     'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f4f4f4;
+  background-color: #0b0b0f; /* Garante o fundo escuro globalmente */
+  color: #e0e0e0;
+}
+
+/* Opcional: Para estilizar a tela de loading do AuthChecker */
+.session-checker {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 1.2em;
+  color: #888;
 }

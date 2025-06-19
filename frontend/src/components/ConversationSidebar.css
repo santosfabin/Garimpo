@@ -1,60 +1,148 @@
 .sidebar {
+  position: relative; /* Essencial para posicionar os botões de toggle */
   width: 260px;
-  background-color: #202123; /* Cor de fundo escura, padrão de IAs */
-  color: white;
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  flex-shrink: 0; /* Impede que a sidebar encolha */
+  background-color: #0b0b0f;
+  flex-shrink: 0;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
 }
 
+/* --- ESTADO RECOLHIDO --- */
+.sidebar.collapsed {
+  width: 56px; /* Largura da "etiqueta" */
+  border-right-color: transparent; /* Esconde a borda para um look mais limpo */
+}
+
+/* Conteúdo interno da sidebar */
+.sidebar-content {
+  width: 260px; /* Largura fixa para evitar quebras de texto */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar.collapsed .sidebar-content {
+  opacity: 0;
+  pointer-events: none; /* Impede cliques no conteúdo escondido */
+}
+
+/* --- BOTÕES DE TOGGLE --- */
+.sidebar-toggle-button {
+  position: absolute;
+  top: 14px;
+  background: none;
+  border: none;
+  color: #a0a0a0;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s, color 0.2s, background-color 0.2s;
+}
+
+.sidebar-toggle-button:hover {
+  color: #fff;
+  background-color: #2a2b32;
+}
+
+/* Botão de RECOLHER */
+.collapse-button {
+  right: 12px;
+  opacity: 1;
+}
+
+.sidebar.collapsed .collapse-button {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Botão de EXPANDIR (A "ETIQUETA") */
+.expand-button {
+  left: 50%; /* Centraliza o botão na "etiqueta" */
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sidebar.collapsed .expand-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* --- ESTILOS DO CONTEÚDO --- */
 .sidebar-header {
-  padding: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 18px 16px 18px 24px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.brand-title {
+  font-weight: 500;
+  font-size: 1.1em;
+}
+
+.sidebar-actions {
+  padding: 0 16px;
+  flex-shrink: 0;
 }
 
 .new-chat-button {
   width: 100%;
-  padding: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background-color: transparent;
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
+  color: #e0e0e0;
+  border: none;
+  border-radius: 8px;
   text-align: left;
   cursor: pointer;
   font-size: 0.9em;
+  font-weight: 500;
   transition: background-color 0.2s ease;
 }
+
 .new-chat-button:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: #2a2b32;
 }
 
 .conversation-list {
   flex-grow: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 16px;
+  padding-top: 8px;
 }
 
-/* NOVO: Wrapper para alinhar o link e o botão */
+.chats-title {
+  font-size: 0.8em;
+  color: #a0a0a0;
+  padding: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .conversation-item-wrapper {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: background-color 0.2s ease;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
-
-/* Quando o mouse está sobre o wrapper, ambos os itens mudam */
 .conversation-item-wrapper:hover {
   background-color: #2a2b32;
 }
 .conversation-item-wrapper.active {
-  background-color: #343541;
+  background-color: #4f46e5;
 }
-
 .conversation-link {
-  flex-grow: 1; /* Faz o link ocupar todo o espaço disponível */
+  flex-grow: 1;
   padding: 10px 12px;
   color: #dcdcdc;
   text-decoration: none;
@@ -63,8 +151,9 @@
   text-overflow: ellipsis;
   cursor: pointer;
 }
-
-/* O botão de apagar só aparece quando o mouse está sobre o item */
+.conversation-item-wrapper.active .conversation-link {
+  color: #ffffff;
+}
 .delete-button {
   background: none;
   border: none;
@@ -74,31 +163,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  opacity: 0.7; /* Fica um pouco transparente por padrão */
-  visibility: hidden; /* Escondido por padrão */
+  border-radius: 6px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease;
 }
-
-/* Mostra o botão quando o mouse passa por cima do wrapper */
 .conversation-item-wrapper:hover .delete-button {
+  opacity: 0.7;
   visibility: visible;
 }
-
 .delete-button:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  opacity: 1; /* Opacidade total no hover */
+  opacity: 1;
 }
-
 .trash-icon {
-  stroke: #ff5555; /* Cor vermelha para o ícone */
+  stroke: #ff7b72;
 }
-
-.sidebar.collapsed {
-  margin-left: -260px; /* "Empurra" a sidebar para fora da tela */
-}
-
-/* Transição suave para o efeito de abrir/fechar */
-.sidebar {
-  /* ... (regras existentes) ... */
-  transition: margin-left 0.3s ease-in-out;
+.sidebar-error {
+  padding: 10px;
+  color: #ff7b72;
+  font-size: 0.9em;
 }
