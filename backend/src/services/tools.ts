@@ -62,9 +62,18 @@ const addUserPreferenceToolSchema = {
       properties: {
         key: {
           type: 'string',
-          description:
-            "A categoria da preferência. Deve ser 'favorite_genres', 'favorite_actors', ou 'favorite_directors'.",
-          enum: ['favorite_genres', 'favorite_actors', 'favorite_directors'],
+          description: 'A categoria da preferência. Deve ser uma das opções disponíveis.',
+          enum: [
+            'favorite_genres',
+            'favorite_actors',
+            'favorite_directors',
+            'favorite_movies',
+            'favorite_decades',
+            'disliked_genres',
+            'disliked_actors',
+            'movie_moods',
+            'other_notes',
+          ],
         },
         value: { type: 'string', description: 'O valor da preferência (ex: "Ação", "Tom Hanks").' },
       },

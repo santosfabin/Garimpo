@@ -31,6 +31,7 @@ const runManualAgent = async (
   userId: string
 ): Promise<AsyncGenerator<any>> => {
   // AsyncGenerator é como uma esteira rolante, onde não é preciso esperar terminar para mandar, ele é enviado continuamente
+
   const firstResponse = await llmWithTools.invoke(chatHistory);
   /*
     firstResponse é um objeto que pode conter:
@@ -94,7 +95,7 @@ const runManualAgent = async (
       })
     );
     /*
-      toolOutputs é um array de ToolMessage, ex:
+      toolOutputs é um array de ToolMessage **(array de mensagens com as respostas de cada ferramenta)**, ex:
       [
         new ToolMessage({
           content: '{"title":"The Matrix","director":"The Wachowskis",...}', // Resultado da primeira ferramenta (em string)
@@ -128,12 +129,12 @@ const runManualAgent = async (
 // --- FUNÇÕES EXPORTADAS ---
 
 export const streamResponse = async (conversationId: string, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
+  res.setHeader('Content-Type', 'text/event-stream'); // conexão que ficará aberta para eu enviar eventos (dados) continuamente
+  res.setHeader('Cache-Control', 'no-cache'); // Impede que o navegador ou proxies guardem a resposta em cache (não ter duplicidade de informação)
+  res.setHeader('Connection', 'keep-alive'); // Pede para a conexão TCP/IP entre o servidor e o cliente permanecer aberta
+  res.flushHeaders(); // Envia esses cabeçalhos (headers) para o cliente imediatamente
 
-  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`); // Escreve dados na conexão aberta
   let finalAnswer = '';
 
   try {
@@ -144,8 +145,8 @@ export const streamResponse = async (conversationId: string, res: Response) => {
     // --- BUSCA DE DADOS ANTES DA IA ---
     // Busca o histórico da conversa e as preferências do usuário em paralelo.
     const [chatHistory, userPreferences] = await Promise.all([
-      conversationRepo.getHistory(conversationId),
-      preferenceRepo.getPreferencesByUserId(userId),
+      conversationRepo.getHistory(conversationId), // histórico da conversa
+      preferenceRepo.getPreferencesByUserId(userId), // preferencias que o usuário tem salvo no bd
     ]);
 
     // --- MONTAGEM DO PROMPT DINÂMICO ---
@@ -160,23 +161,73 @@ export const streamResponse = async (conversationId: string, res: Response) => {
 
     // Se houver preferências, criamos uma mensagem "falsa" do usuário.
     if (userPreferences) {
-      let prefsString = 'Lembre-se das minhas preferências: ';
-      if (userPreferences.favorite_genres?.length)
-        prefsString += `meus gêneros favoritos são ${userPreferences.favorite_genres.join(', ')}. `;
-      if (userPreferences.favorite_actors?.length)
-        prefsString += `meus atores favoritos são ${userPreferences.favorite_actors.join(', ')}. `;
-      if (userPreferences.favorite_directors?.length)
-        prefsString += `meus diretores favoritos são ${userPreferences.favorite_directors.join(
-          ', '
-        )}. `;
+      const preferenceParts: string[] = [];
 
-      // Adicionamos essa string como se fosse uma mensagem antiga do usuário.
-      fullHistory.push(new HumanMessage(prefsString));
-      // Adicionamos uma resposta da IA para contextualizar.
-      fullHistory.push(new AIMessage('Entendido, guardei suas preferências!'));
+      // Preferências POSITIVAS (listas de texto)
+      if (userPreferences.favorite_genres?.length > 0) {
+        preferenceParts.push(
+          `meus gêneros favoritos são ${userPreferences.favorite_genres.join(', ')}`
+        );
+      }
+      if (userPreferences.favorite_actors?.length > 0) {
+        preferenceParts.push(
+          `meus atores favoritos são ${userPreferences.favorite_actors.join(', ')}`
+        );
+      }
+      if (userPreferences.favorite_directors?.length > 0) {
+        preferenceParts.push(
+          `meus diretores favoritos são ${userPreferences.favorite_directors.join(', ')}`
+        );
+      }
+      if (userPreferences.movie_moods?.length > 0) {
+        preferenceParts.push(
+          `geralmente assisto filmes com as seguintes 'vibes': ${userPreferences.movie_moods.join(
+            ', '
+          )}`
+        );
+      }
+
+      // Preferências POSITIVAS (listas de números)
+      if (userPreferences.favorite_movies?.length > 0) {
+        // Supondo que você queira apenas informar que existem, sem listar IDs
+        preferenceParts.push(`já salvei alguns filmes como favoritos`);
+      }
+      if (userPreferences.favorite_decades?.length > 0) {
+        preferenceParts.push(
+          `minhas décadas favoritas para filmes são ${userPreferences.favorite_decades.join(', ')}`
+        );
+      }
+
+      // Preferências NEGATIVAS
+      if (userPreferences.disliked_genres?.length > 0) {
+        preferenceParts.push(
+          `os gêneros que eu não gosto são ${userPreferences.disliked_genres.join(', ')}`
+        );
+      }
+      if (userPreferences.disliked_actors?.length > 0) {
+        preferenceParts.push(
+          `os atores que eu não gosto são ${userPreferences.disliked_actors.join(', ')}`
+        );
+      }
+
+      // Preferências ÚNICAS (não são listas)
+      if (userPreferences.other_notes) {
+        preferenceParts.push(
+          `uma anotação adicional sobre meus gostos é: "${userPreferences.other_notes}"`
+        );
+      }
+
+      // Monta a string final e adiciona ao histórico, se houver alguma preferência.
+      if (preferenceParts.length > 0) {
+        const prefsString = `Lembre-se das minhas preferências: ${preferenceParts.join('; ')}.`;
+
+        // Adicionamos essa string como se fosse uma mensagem antiga do usuário.
+        fullHistory.push(new HumanMessage(prefsString));
+        // Adicionamos uma resposta da IA para contextualizar.
+        fullHistory.push(new AIMessage('Entendido, guardei suas preferências!'));
+      }
     }
 
-    // Adicionamos o histórico real da conversa DEPOIS das preferências.
     fullHistory.push(...chatHistory);
 
     // O agente agora é chamado com o histórico já enriquecido.
@@ -211,7 +262,9 @@ export const generateTitle = async (firstMessage: string): Promise<string> => {
     openAIApiKey: config.OPENAI_API_KEY,
   });
   const prompt = `Você é um assistente que cria títulos curtos e descritivos (máximo 5 palavras) para conversas, baseado na primeira mensagem do usuário. Responda APENAS com o título, sem nenhuma outra palavra ou pontuação. Mensagem do usuário: "${firstMessage}"`;
+
   const response = await titleLlm.invoke(prompt);
+
   const title = response.content.toString().trim().replace(/"/g, '');
   console.log(`[chatService] Título gerado: "${title}"`);
   return title;

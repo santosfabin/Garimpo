@@ -67,9 +67,6 @@ CREATE TABLE user_preferences (
     -- Armazena uma lista de atores/atrizes que o usuário NÃO gosta.
     disliked_actors TEXT[] DEFAULT ARRAY[]::TEXT[],
     
-    -- Guarda a língua original preferida para os filmes (ex: 'en' para inglês, 'ko' para coreano).
-    preferred_language VARCHAR(10) DEFAULT 'pt-BR',
-    
     -- Guarda uma lista de "vibes" ou humores. Ex: {'filme para relaxar', 'filme para pensar'}
     movie_moods TEXT[] DEFAULT ARRAY[]::TEXT[],
     

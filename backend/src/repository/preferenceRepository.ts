@@ -11,7 +11,17 @@ import pool from '../database/connection';
  */
 export const addPreference = async (userId: string, key: string, value: string) => {
   // Validação para garantir que a 'key' seja uma das colunas permitidas, prevenindo SQL Injection.
-  const allowedKeys = ['favorite_genres', 'favorite_actors', 'favorite_directors'];
+  const allowedKeys = [
+    'favorite_genres',
+    'favorite_actors',
+    'favorite_directors',
+    'favorite_movies',
+    'favorite_decades',
+    'disliked_genres',
+    'disliked_actors',
+    'movie_moods',
+    'other_notes',
+  ];
   if (!allowedKeys.includes(key)) {
     throw new Error(`Chave de preferência inválida: ${key}`);
   }
