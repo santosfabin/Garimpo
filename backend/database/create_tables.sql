@@ -36,3 +36,75 @@ CREATE TABLE messages (
         REFERENCES conversations(id)
         ON DELETE CASCADE
 );
+
+-- Apaga a função de gatilho se ela existir de uma tentativa anterior, para evitar erros.
+DROP FUNCTION IF EXISTS update_timestamp_column();
+
+-- Cria a tabela que armazenará as preferências de cada usuário.
+CREATE TABLE user_preferences (
+    -- Chave primária. É o mesmo ID do usuário na tabela 'users'.
+    -- Isso garante que cada usuário tenha apenas um conjunto de preferências.
+    user_id UUID PRIMARY KEY,
+    
+    -- Armazena uma lista de gêneros que o usuário gosta. Ex: {'Ação', 'Comédia'}
+    favorite_genres TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Armazena uma lista de atores/atrizes que o usuário gosta.
+    favorite_actors TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Armazena uma lista de diretores que o usuário gosta.
+    favorite_directors TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    -- Armazena uma lista de filmes que o usuário gosta.
+    favorite_movies INT[] DEFAULT ARRAY[]::INT[],
+    
+    -- Armazena uma lista de décadas preferidas. Ex: {1980, 2020}
+    favorite_decades INT[] DEFAULT ARRAY[]::INT[],
+    
+    -- Armazena uma lista de gêneros que o usuário NÃO gosta.
+    disliked_genres TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Armazena uma lista de atores/atrizes que o usuário NÃO gosta.
+    disliked_actors TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Guarda a língua original preferida para os filmes (ex: 'en' para inglês, 'ko' para coreano).
+    preferred_language VARCHAR(10) DEFAULT 'pt-BR',
+    
+    -- Guarda uma lista de "vibes" ou humores. Ex: {'filme para relaxar', 'filme para pensar'}
+    movie_moods TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Um campo de texto livre para anotações que não se encaixam nos outros campos.
+    -- Ex: "gosto de filmes com reviravoltas".
+    other_notes TEXT,
+    
+    -- Guarda a data e hora da última vez que as preferências foram alteradas.
+    -- O valor padrão é a hora da criação.
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+
+    -- Define que 'user_id' é uma chave estrangeira que aponta para a tabela 'users'.
+    -- ON DELETE CASCADE: se um usuário for apagado, suas preferências são apagadas junto.
+    CONSTRAINT fk_user
+        FOREIGN KEY(user_id) 
+        REFERENCES users(id)
+        ON DELETE CASCADE
+);
+
+-- Cria a função que será usada pelo gatilho para atualizar o timestamp.
+CREATE OR REPLACE FUNCTION update_timestamp_column()
+RETURNS TRIGGER AS $$
+BEGIN
+   -- Define que a coluna 'updated_at' da linha que está sendo atualizada (NEW)
+   -- receberá o valor da data e hora atuais (NOW()).
+   NEW.updated_at = NOW(); 
+   RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Cria o gatilho que automatiza a atualização do campo 'updated_at'.
+CREATE TRIGGER update_user_preferences_updated_at
+-- O gatilho é disparado ANTES de um comando UPDATE na tabela user_preferences.
+BEFORE UPDATE ON user_preferences
+-- Ele roda para cada linha que for afetada pela atualização.
+FOR EACH ROW
+-- A ação que ele executa é chamar a função que criamos acima.
+EXECUTE FUNCTION update_timestamp_column();

@@ -1,0 +1,67 @@
+import pool from '../database/connection';
+
+/**
+ * Adiciona ou atualiza uma preferência de usuário.
+ * Esta função usa a cláusula ON CONFLICT do PostgreSQL para criar uma nova
+ * linha de preferência se não existir, ou atualizar os arrays se já existir.
+ * @param userId - O ID do usuário.
+ * @param key - A coluna a ser atualizada ('favorite_genres', 'favorite_actors', etc.).
+ * @param value - O valor a ser adicionado ao array (ex: 'Ação', 'Tom Hanks').
+ * @returns Um objeto de sucesso ou lança um erro.
+ */
+export const addPreference = async (userId: string, key: string, value: string) => {
+  // Validação para garantir que a 'key' seja uma das colunas permitidas, prevenindo SQL Injection.
+  const allowedKeys = ['favorite_genres', 'favorite_actors', 'favorite_directors'];
+  if (!allowedKeys.includes(key)) {
+    throw new Error(`Chave de preferência inválida: ${key}`);
+  }
+
+  try {
+    const query = `
+      INSERT INTO user_preferences (user_id, ${key})
+      VALUES ($1, ARRAY[$2])
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        ${key} = array_append(
+          COALESCE(user_preferences.${key}, ARRAY[]::VARCHAR[]),
+          $2
+        )
+      WHERE NOT (user_preferences.${key} @> ARRAY[$2]);
+    `;
+    // COALESCE: Trata o caso de a coluna ser nula, começando com um array vazio.
+    // array_append: Adiciona o novo valor ao array existente.
+    // WHERE NOT: Impede a adição de valores duplicados no array.
+
+    await pool.query(query, [userId, value]);
+
+    console.log(
+      `[Repo] Preferência '${value}' adicionada para a chave '${key}' do usuário ${userId}.`
+    );
+    return { success: true, message: `Preferência '${value}' salva!` };
+  } catch (error) {
+    console.error('Erro ao adicionar preferência no repositório:', error);
+    throw new Error('Não foi possível salvar a preferência.');
+  }
+};
+
+/**
+ * Busca todas as preferências de um usuário.
+ * @param userId - O ID do usuário.
+ * @returns Um objeto com as preferências ou null se não houver.
+ */
+export const getPreferencesByUserId = async (userId: string) => {
+  try {
+    const query =
+      'SELECT favorite_genres, favorite_actors, favorite_directors FROM user_preferences WHERE user_id = $1';
+    const { rows } = await pool.query(query, [userId]);
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    return rows[0];
+  } catch (error) {
+    console.error('Erro ao buscar preferências do usuário:', error);
+    throw new Error('Não foi possível carregar as preferências.');
+  }
+};

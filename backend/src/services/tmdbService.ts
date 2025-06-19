@@ -17,7 +17,7 @@ const getGenreMap = async (): Promise<Map<string, number>> => {
   }
 
   console.log('[tmdbService] Buscando e cacheando mapa de gêneros...');
-  const url = `${BASE_URL}/genre/movie/list?api_key=${API_KEY}`;
+  const url = `${BASE_URL}/genre/movie/list?api_key=${API_KEY}&language=pt-BR`;
   const response = await fetch(url);
   const data: any = await response.json();
 
@@ -42,6 +42,9 @@ const getGenreMap = async (): Promise<Map<string, number>> => {
 export const searchMoviesByKeyword = async (keyword: string): Promise<any> => {
   try {
     const url = `${BASE_URL}/search/movie?query=${encodeURIComponent(keyword)}&api_key=${API_KEY}`;
+
+    console.log(`[TMDB Service] Buscando com a URL: ${url}`);
+
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Erro na API do TMDB: ${response.statusText}`);
@@ -74,17 +77,23 @@ export const getMovieDetails = async (title: string): Promise<any> => {
   try {
     const searchUrl = `${BASE_URL}/search/movie?query=${encodeURIComponent(
       title
-    )}&api_key=${API_KEY}`;
+    )}&api_key=${API_KEY}&language=pt-BR`;
     const searchResponse = await fetch(searchUrl);
     const searchData: any = await searchResponse.json();
 
-    if (searchData.results.length === 0) {
+    console.log('[DEBUG] A ORDENAÇÃO POR POPULARIDADE ESTÁ SENDO EXECUTADA!');
+
+    if (!searchData.results || searchData.results.length === 0) {
       return `Não consegui encontrar um filme chamado "${title}". Tem certeza que o nome está correto?`;
     }
 
-    const movieId = searchData.results[0].id;
+    // Ordena os resultados pela popularidade (do maior para o menor)
+    const sortedResults = searchData.results.sort((a: any, b: any) => b.popularity - a.popularity);
 
-    const detailsUrl = `${BASE_URL}/movie/${movieId}?append_to_response=credits&api_key=${API_KEY}`;
+    // Pega o ID do filme mais popular, que é o resultado mais confiável
+    const movieId = sortedResults[0].id;
+
+    const detailsUrl = `${BASE_URL}/movie/${movieId}?append_to_response=credits&api_key=${API_KEY}&language=pt-BR`;
     const detailsResponse = await fetch(detailsUrl);
     const detailsData: any = await detailsResponse.json();
 
@@ -126,7 +135,7 @@ export const discoverMovies = async ({
       genreId = genres.get(genreName.toLowerCase());
     }
 
-    let url = `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=100`;
+    let url = `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=100&language=pt-BR`;
 
     if (year) url += `&primary_release_year=${year}`;
     if (genreId) url += `&with_genres=${genreId}`;

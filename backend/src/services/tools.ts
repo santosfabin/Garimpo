@@ -1,70 +1,132 @@
-// ARQUIVO: /backend/src/services/tools.ts
+// src/services/tools.ts
 
-import * as tmdbService from "./tmdbService";
+import * as tmdbService from './tmdbService';
+import * as preferenceRepo from '../repository/preferenceRepository'; // Repositório para preferências
 
-// ===================================================================
-// =================== DEFINIÇÃO DOS SCHEMAS =========================
-// ===================================================================
-// Cada vez que criar uma nova ferramenta, defina o schema dela aqui.
+// ==============================================================================
+// ||                    1. DEFINIÇÃO DOS SCHEMAS (INPUTS)                     ||
+// ==============================================================================
+// Descreve para a IA como cada ferramenta deve ser chamada.
 
 const searchToolSchema = {
-  name: "search_movies_by_keyword",
-  description:
-    "Busca por filmes baseado em um gênero, ator, diretor ou palavra-chave.",
-  parameters: {
-    type: "object",
-    properties: { query: { type: "string", description: "O termo de busca." } },
-    required: ["query"],
+  type: 'function' as const,
+  function: {
+    name: 'search_movies_by_keyword',
+    description: 'Busca por filmes baseado em um gênero, ator, diretor ou palavra-chave.',
+    parameters: {
+      type: 'object' as const,
+      properties: { query: { type: 'string', description: 'O termo de busca em inglês.' } },
+      required: ['query'],
+    },
   },
 };
 
 const detailsToolSchema = {
-  name: "get_movie_details",
-  description:
-    "Busca informações detalhadas sobre um filme específico pelo título.",
-  parameters: {
-    type: "object",
-    properties: {
-      title: { type: "string", description: "O título do filme." },
+  type: 'function' as const,
+  function: {
+    name: 'get_movie_details',
+    description: 'Busca informações detalhadas sobre um filme específico pelo título.',
+    parameters: {
+      type: 'object' as const,
+      properties: { title: { type: 'string', description: 'O título do filme em inglês.' } },
+      required: ['title'],
     },
-    required: ["title"],
   },
 };
 
 const discoverToolSchema = {
-  name: "discover_movies",
-  description:
-    "Descobre filmes com base em filtros como gênero, ano e nota mínima.",
-  parameters: {
-    type: "object",
-    properties: {
-      genreName: { type: "string" },
-      minRating: { type: "number" },
-      year: { type: "number" },
+  type: 'function' as const,
+  function: {
+    name: 'discover_movies',
+    description: 'Descobre filmes com base em filtros como gênero, ano e nota mínima.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        genreName: { type: 'string', description: 'O nome do gênero em inglês.' },
+        minRating: { type: 'number' },
+        year: { type: 'number' },
+      },
+      required: [],
     },
-    required: [],
   },
 };
 
-// ===================================================================
-// ============== REGISTRO CENTRAL DE FERRAMENTAS ====================
-// ===================================================================
-// Este é o único lugar que você precisará modificar para adicionar novas ferramentas.
-
-// 1. Mapeie o nome da ferramenta para sua função.
-export const availableTools: { [key: string]: Function } = {
-  search_movies_by_keyword: tmdbService.searchMoviesByKeyword,
-  get_movie_details: tmdbService.getMovieDetails,
-  discover_movies: tmdbService.discoverMovies,
-  // Exemplo: se adicionar 'getTrending', a linha seria:
-  // get_trending_movies: tmdbService.getTrendingMovies,
+const addUserPreferenceToolSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'add_user_preference_item',
+    description:
+      'Salva uma preferência do usuário, como gênero, ator ou diretor favorito. Use para pedidos como "meu ator favorito é..." ou "gosto de filmes de comédia".',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        key: {
+          type: 'string',
+          description:
+            "A categoria da preferência. Deve ser 'favorite_genres', 'favorite_actors', ou 'favorite_directors'.",
+          enum: ['favorite_genres', 'favorite_actors', 'favorite_directors'],
+        },
+        value: { type: 'string', description: 'O valor da preferência (ex: "Ação", "Tom Hanks").' },
+      },
+      required: ['key', 'value'],
+    },
+  },
 };
 
-// 2. Agrupe os schemas para a IA.
+// Lista de schemas que será exportada e usada pelo LLM.
+// Para adicionar uma nova ferramenta para a IA, adicione seu schema aqui.
 export const toolSchemas = [
-  { type: "function", function: searchToolSchema },
-  { type: "function", function: detailsToolSchema },
-  { type: "function", function: discoverToolSchema },
-  // Exemplo: se adicionar 'getTrending', a linha seria:
-  // { type: 'function', function: trendingToolSchema },
+  searchToolSchema,
+  detailsToolSchema,
+  discoverToolSchema,
+  addUserPreferenceToolSchema,
 ];
+
+// ==============================================================================
+// ||                   2. LÓGICA DE EXECUÇÃO (O CÉREBRO)                      ||
+// ==============================================================================
+// Um mapa que conecta o nome da ferramenta à sua função de execução.
+
+interface ToolExecutorPayload {
+  toolArgs: any;
+  userId?: string;
+}
+
+const toolExecutors: { [key: string]: (payload: ToolExecutorPayload) => Promise<any> } = {
+  search_movies_by_keyword: async ({ toolArgs }) => {
+    return tmdbService.searchMoviesByKeyword(toolArgs.query);
+  },
+
+  get_movie_details: async ({ toolArgs }) => {
+    return tmdbService.getMovieDetails(toolArgs.title);
+  },
+
+  discover_movies: async ({ toolArgs }) => {
+    return tmdbService.discoverMovies(toolArgs);
+  },
+
+  add_user_preference_item: async ({ toolArgs, userId }) => {
+    if (!userId) {
+      return 'Erro: Não consigo salvar a preferência pois não sei quem é o usuário.';
+    }
+    // A função no repositório agora só precisa da chave, valor e ID do usuário.
+    return preferenceRepo.addPreference(userId, toolArgs.key, toolArgs.value);
+  },
+
+  // Para adicionar uma nova ferramenta, adicione sua função de execução aqui.
+};
+
+// ==============================================================================
+// ||                  3. FUNÇÃO ÚNICA DE ORQUESTRAÇÃO                         ||
+// ==============================================================================
+// Esta é a única função que o chatService vai chamar.
+
+export const executeTool = (toolName: string, payload: ToolExecutorPayload): Promise<any> => {
+  const executor = toolExecutors[toolName];
+  if (!executor) {
+    return Promise.resolve(
+      `Erro: Ferramenta desconhecida ou sem executor definido: '${toolName}'.`
+    );
+  }
+  return executor(payload);
+};

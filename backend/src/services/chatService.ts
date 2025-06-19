@@ -1,9 +1,14 @@
+// src/services/chatService.ts
+
 import { ChatOpenAI } from '@langchain/openai';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import config from '../config';
 import * as conversationRepo from '../repository/conversationRepository';
 import { Response } from 'express';
-import { availableTools, toolSchemas } from './tools';
+// Importações simplificadas: só precisamos dos schemas e do orquestrador
+import { toolSchemas, executeTool } from './tools';
+import { getUserIdFromToken } from '../utils/getUserIdFromToken';
+import * as preferenceRepo from '../repository/preferenceRepository';
 
 // --- CONFIGURAÇÃO DO MODELO E FERRAMENTAS ---
 
@@ -16,17 +21,19 @@ const llm = new ChatOpenAI({
 //  FAÇA O BIND DAS FERRAMENTAS (usando a lista de schemas)
 // Permite "amarrar" ou "vincular" configurações extras a uma instância do LLM, sem modificar a instância original
 const llmWithTools = llm.bind({
-  tools: toolSchemas,
+  tools: toolSchemas, // Usa a lista de schemas importada de tools.ts
 });
 
 // --- LÓGICA DO AGENTE ---
 
 const runManualAgent = async (
-  chatHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[]
+  chatHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[],
+  userId: string
 ): Promise<AsyncGenerator<any>> => {
   // AsyncGenerator é como uma esteira rolante, onde não é preciso esperar terminar para mandar, ele é enviado continuamente
   const firstResponse = await llmWithTools.invoke(chatHistory);
   /*
+    firstResponse é um objeto que pode conter:
     {
           1. O CONTEÚDO PRINCIPAL
       content: '', // <--- Geralmente vazio quando uma ferramenta é chamada
@@ -71,24 +78,23 @@ const runManualAgent = async (
 
         console.log(`[Manual Agent] Executando ferramenta: ${toolName} com args:`, toolArgs);
 
-        // 2. Procura a função correspondente no nosso mapa
-        const toolToExecute = availableTools[toolName]; // Ex: availableTools['get_movie_details']
+        // 2. Procura e executa a ferramenta usando o orquestrador centralizado
+        // Esta é a única linha necessária. Ela chama a função em `tools.ts`
+        // que sabe como lidar com cada ferramenta individualmente.
+        const output = await executeTool(toolName, { toolArgs, userId });
 
-        let output: any;
+        // SEMPRE USAMOS JSON.stringify. Isso garante consistência.
+        const content =
+          typeof output === 'string' || output === null ? String(output) : JSON.stringify(output);
 
-        // 3. Executa a função se ela foi encontrada
-        if (toolToExecute) {
-          output = await toolToExecute(toolArgs); // Chama a função dinamicamente
-        } else {
-          output = `Erro: Ferramenta desconhecida '${toolName}'.`;
-        }
+        const toolMessage = new ToolMessage({ content, tool_call_id: toolCall.id });
+        console.log('[DEBUG] ToolMessage a ser enviada:', toolMessage);
 
-        // 4. Retorna a mensagem formatada para a IA
-        return new ToolMessage({ content: JSON.stringify(output), tool_call_id: toolCall.id });
+        return toolMessage;
       })
     );
-
     /*
+      toolOutputs é um array de ToolMessage, ex:
       [
         new ToolMessage({
           content: '{"title":"The Matrix","director":"The Wachowskis",...}', // Resultado da primeira ferramenta (em string)
@@ -100,11 +106,14 @@ const runManualAgent = async (
 
     historyForSecondCall.push(...toolOutputs);
     /*
+      O histórico agora contém a sequência completa:
       1. Usuário perguntou algo.
       2. IA decidiu usar ferramentas.
       3. Aqui estão os resultados dessas ferramentas.
+      Com este histórico completo, a IA pode finalmente formular uma resposta para o usuário.
     */
 
+    // Faz a segunda chamada à IA, agora com os resultados das ferramentas, e faz o stream da resposta.
     return llmWithTools.stream(historyForSecondCall);
   } else {
     // Se não houver ferramentas, fazemos o stream da primeira resposta diretamente.
@@ -119,43 +128,68 @@ const runManualAgent = async (
 // --- FUNÇÕES EXPORTADAS ---
 
 export const streamResponse = async (conversationId: string, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream'); // conexão que ficará aberta para eu enviar eventos (dados) continuamente
-  res.setHeader('Cache-Control', 'no-cache'); // Impede que o navegador ou proxies guardem a resposta em cache (não ter duplicidade de informação)
-  res.setHeader('Connection', 'keep-alive'); // Pede para a conexão TCP/IP entre o servidor e o cliente permanecer aberta
-  res.flushHeaders(); // Envia esses cabeçalhos (headers) para o cliente imediatamente
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
 
-  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`); // Escreve dados na conexão aberta
-
-  // Variável para juntar a resposta completa e salvar no DB
+  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`);
   let finalAnswer = '';
 
   try {
-    const chatHistory = await conversationRepo.getHistory(conversationId);
-    const fullHistory = [
-      new SystemMessage(
-        "Você é 'Garimpo', um assistente de cinema divertido e especialista. Seu único propósito é ajudar usuários a encontrar os melhores filmes. Responda sempre em português do Brasil. Se o usuário perguntar sobre qualquer outro assunto que não seja filmes, séries ou cinema, recuse educadamente a pergunta e o lembre de seu propósito."
-      ),
-      ...chatHistory,
+    const token = (res.req as any).cookies.session_id;
+    const userId = getUserIdFromToken(token);
+    if (!userId) throw new Error('Usuário não autenticado para o stream.');
+
+    // --- BUSCA DE DADOS ANTES DA IA ---
+    // Busca o histórico da conversa e as preferências do usuário em paralelo.
+    const [chatHistory, userPreferences] = await Promise.all([
+      conversationRepo.getHistory(conversationId),
+      preferenceRepo.getPreferencesByUserId(userId),
+    ]);
+
+    // --- MONTAGEM DO PROMPT DINÂMICO ---
+    let systemPrompt =
+      "Você é 'Garimpo', um assistente de cinema divertido e especialista. Seu único propósito é ajudar usuários a encontrar os melhores filmes. Responda sempre em português do Brasil. " +
+      'Use as ferramentas disponíveis para buscar informações. ' +
+      'Passe os nomes de filmes, atores, diretores e gêneros para as ferramentas EXATAMENTE como o usuário escreveu ou como eles apareceram em resultados anteriores. Não tente traduzir nada.';
+
+    const fullHistory: (SystemMessage | HumanMessage | AIMessage | ToolMessage)[] = [
+      new SystemMessage(systemPrompt),
     ];
 
-    // 1. Obtém o stream do agente
-    const stream = await runManualAgent(fullHistory);
+    // Se houver preferências, criamos uma mensagem "falsa" do usuário.
+    if (userPreferences) {
+      let prefsString = 'Lembre-se das minhas preferências: ';
+      if (userPreferences.favorite_genres?.length)
+        prefsString += `meus gêneros favoritos são ${userPreferences.favorite_genres.join(', ')}. `;
+      if (userPreferences.favorite_actors?.length)
+        prefsString += `meus atores favoritos são ${userPreferences.favorite_actors.join(', ')}. `;
+      if (userPreferences.favorite_directors?.length)
+        prefsString += `meus diretores favoritos são ${userPreferences.favorite_directors.join(
+          ', '
+        )}. `;
 
-    // 2. Itera sobre o stream, pedaço por pedaço
-    // Está esperando o próximo "pedaço" (chunk) do stream ficar disponível.
+      // Adicionamos essa string como se fosse uma mensagem antiga do usuário.
+      fullHistory.push(new HumanMessage(prefsString));
+      // Adicionamos uma resposta da IA para contextualizar.
+      fullHistory.push(new AIMessage('Entendido, guardei suas preferências!'));
+    }
+
+    // Adicionamos o histórico real da conversa DEPOIS das preferências.
+    fullHistory.push(...chatHistory);
+
+    // O agente agora é chamado com o histórico já enriquecido.
+    const stream = await runManualAgent(fullHistory, userId);
+
     for await (const chunk of stream) {
-      // O conteúdo de cada pedaço
       const content = chunk.content?.toString() || '';
-
       if (content) {
-        // Acumula na variável para salvar no final
         finalAnswer += content;
-        // Envia o pedaço para o frontend IMEDIATAMENTE
         sendEvent({ type: 'chunk', content });
       }
     }
 
-    // 3. Após o loop terminar, salva a resposta completa no banco
     if (finalAnswer) {
       await conversationRepo.addMessage(conversationId, 'ai', finalAnswer);
       console.log(`[Stream] Resposta completa salva no DB para a conversa ${conversationId}.`);
