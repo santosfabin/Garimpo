@@ -121,11 +121,15 @@ export const getMovieDetails = async (title: string): Promise<any> => {
 export const discoverMovies = async ({
   genreName,
   minRating,
+  maxRating, // <-- NOVO PARÂMETRO
   year,
+  sortBy = 'vote_average.desc', // <-- NOVO PARÂMETRO com valor padrão
 }: {
   genreName?: string;
   minRating?: number;
+  maxRating?: number; // <-- NOVO
   year?: number;
+  sortBy?: 'vote_average.desc' | 'vote_average.asc'; // <-- NOVO
 }): Promise<any> => {
   try {
     const genres = await getGenreMap();
@@ -135,11 +139,13 @@ export const discoverMovies = async ({
       genreId = genres.get(genreName.toLowerCase());
     }
 
-    let url = `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=vote_average.desc&vote_count.gte=100&language=pt-BR`;
+    // A URL base agora usa o sortBy dinâmico
+    let url = `${BASE_URL}/discover/movie?api_key=${API_KEY}&sort_by=${sortBy}&vote_count.gte=100`;
 
     if (year) url += `&primary_release_year=${year}`;
     if (genreId) url += `&with_genres=${genreId}`;
     if (minRating) url += `&vote_average.gte=${minRating}`;
+    if (maxRating) url += `&vote_average.lte=${maxRating}`; // <-- NOVO FILTRO
 
     const response = await fetch(url);
     const data: any = await response.json();

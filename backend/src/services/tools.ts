@@ -34,17 +34,41 @@ const detailsToolSchema = {
   },
 };
 
-const discoverToolSchema = {
+// backend/src/services/tools.ts
+
+export const discoverToolSchema = {
   type: 'function' as const,
   function: {
     name: 'discover_movies',
-    description: 'Descobre filmes com base em filtros como gênero, ano e nota mínima.',
+    description:
+      'Descobre filmes com base em filtros avançados como gênero, ano, nota mínima, nota máxima e ordenação. Essencial para encontrar os "melhores" ou "piores" filmes.',
     parameters: {
       type: 'object' as const,
       properties: {
-        genreName: { type: 'string', description: 'O nome do gênero em inglês.' },
-        minRating: { type: 'number' },
-        year: { type: 'number' },
+        genreName: {
+          type: 'string' as const,
+          description: 'O nome do gênero para filtrar, ex: "Ação", "Comédia".',
+        },
+        minRating: {
+          type: 'number' as const,
+          description: 'A nota média MÍNIMA que o filme deve ter (de 0 a 10).',
+        },
+        maxRating: {
+          // <-- NOVO
+          type: 'number' as const,
+          description: 'A nota média MÁXIMA que o filme deve ter (de 0 a 10).',
+        },
+        year: {
+          type: 'number' as const,
+          description: 'O ano de lançamento do filme.',
+        },
+        sortBy: {
+          // <-- NOVO
+          type: 'string' as const,
+          description:
+            "Como ordenar os resultados. Use 'vote_average.desc' para os mais bem avaliados e 'vote_average.asc' para os piores avaliados.",
+          enum: ['vote_average.desc', 'vote_average.asc'],
+        },
       },
       required: [],
     },
