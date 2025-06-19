@@ -43,7 +43,6 @@ DROP FUNCTION IF EXISTS update_timestamp_column();
 -- Cria a tabela que armazenará as preferências de cada usuário.
 CREATE TABLE user_preferences (
     -- Chave primária. É o mesmo ID do usuário na tabela 'users'.
-    -- Isso garante que cada usuário tenha apenas um conjunto de preferências.
     user_id UUID PRIMARY KEY,
     
     -- Armazena uma lista de gêneros que o usuário gosta. Ex: {'Ação', 'Comédia'}
@@ -55,11 +54,11 @@ CREATE TABLE user_preferences (
     -- Armazena uma lista de diretores que o usuário gosta.
     favorite_directors TEXT[] DEFAULT ARRAY[]::TEXT[],
 
-    -- Armazena uma lista de filmes que o usuário gosta.
-    favorite_movies INT[] DEFAULT ARRAY[]::INT[],
+    -- (CORRIGIDO) Armazena uma lista de filmes que o usuário gosta. Ex: {'Forrest Gump'}
+    favorite_movies TEXT[] DEFAULT ARRAY[]::TEXT[],
     
-    -- Armazena uma lista de décadas preferidas. Ex: {1980, 2020}
-    favorite_decades INT[] DEFAULT ARRAY[]::INT[],
+    -- (CORRIGIDO) Armazena uma lista de décadas preferidas. Ex: {'1990s', '2020s'}
+    favorite_decades TEXT[] DEFAULT ARRAY[]::TEXT[],
     
     -- Armazena uma lista de gêneros que o usuário NÃO gosta.
     disliked_genres TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -70,22 +69,19 @@ CREATE TABLE user_preferences (
     -- Guarda uma lista de "vibes" ou humores. Ex: {'filme para relaxar', 'filme para pensar'}
     movie_moods TEXT[] DEFAULT ARRAY[]::TEXT[],
     
-    -- Um campo de texto livre para anotações que não se encaixam nos outros campos.
-    -- Ex: "gosto de filmes com reviravoltas".
-    other_notes TEXT,
+    -- (CORRIGIDO) Um campo para anotações que não se encaixam nos outros campos.
+    -- Ex: {'gosto de filmes com reviravoltas', 'prefiro finais felizes'}
+    other_notes TEXT[] DEFAULT ARRAY[]::TEXT[],
     
     -- Guarda a data e hora da última vez que as preferências foram alteradas.
-    -- O valor padrão é a hora da criação.
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
     -- Define que 'user_id' é uma chave estrangeira que aponta para a tabela 'users'.
-    -- ON DELETE CASCADE: se um usuário for apagado, suas preferências são apagadas junto.
     CONSTRAINT fk_user
         FOREIGN KEY(user_id) 
         REFERENCES users(id)
         ON DELETE CASCADE
 );
-
 -- Cria a função que será usada pelo gatilho para atualizar o timestamp.
 CREATE OR REPLACE FUNCTION update_timestamp_column()
 RETURNS TRIGGER AS $$
