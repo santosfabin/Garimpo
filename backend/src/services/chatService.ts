@@ -1,12 +1,10 @@
-// src/services/chatService.ts
-
 import { ChatOpenAI } from '@langchain/openai';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import config from '../config';
 import * as conversationRepo from '../repository/conversationRepository';
 import { Response } from 'express';
 // Importações simplificadas: só precisamos dos schemas e do orquestrador
-import { toolSchemas, executeTool } from './tools';
+import { toolSchemas, executeTool } from './tools'; // Assumindo que você tem este arquivo `tools.ts`
 import { getUserIdFromToken } from '../utils/getUserIdFromToken';
 import * as preferenceRepo from '../repository/preferenceRepository';
 
@@ -24,13 +22,89 @@ const llmWithTools = llm.bind({
   tools: toolSchemas, // Usa a lista de schemas importada de tools.ts
 });
 
+// --- FUNÇÃO: IA NARRADORA DE STATUS ---
+
+const statusNarratorLlm = new ChatOpenAI({
+  modelName: 'gpt-4o',
+  temperature: 0.5,
+  openAIApiKey: config.OPENAI_API_KEY,
+});
+
+/**
+ * Gera uma mensagem de status criativa e temática usando a IA.
+ * @param technicalMessage - A descrição técnica da ação (ex: "Analisando a pergunta.").
+ * @param toolName - Opcional: o nome da ferramenta que está sendo usada.
+ * @param toolArgs - Opcional: os argumentos da ferramenta.
+ * @returns Uma string com a mensagem de status para o usuário.
+ */
+const generateStatusMessage = async (
+  technicalMessage: string,
+  toolName?: string,
+  toolArgs?: any
+): Promise<string> => {
+  const safeArgs = { ...toolArgs };
+  if (toolName) {
+    safeArgs.toolName = toolName;
+  }
+  if (safeArgs.userId) {
+    delete safeArgs.userId;
+  }
+  const argsJson = Object.keys(safeArgs).length > 0 ? JSON.stringify(safeArgs) : 'N/A';
+
+  // PROMPT FINAL, COM SINTAXE CORRIGIDA E REFORÇO NO TEMA
+  const finalPrompt = `Você é "Garimpo", um narrador de status para um chatbot de filmes. Sua única missão é criar uma frase curta (1 a 7 palavras) para o usuário ler enquanto aguarda.
+
+Siga estas regras RÍGIDAS para criar a frase:
+
+**REGRA 1: TEMA OBRIGATÓRIO.**
+A frase DEVE usar uma metáfora relacionada a garimpo, mineração, escavação ou geologia. Este é o tema principal. O tema "cinema" é secundário e só deve ser usado se combinado com o principal.
+- **Correto:** "Garimpando filmes de Ação", "Analisando a gema 'Matrix'".
+- **Incorreto:** "Luzes, câmera, ação!", "Editando a cena...".
+
+**REGRA 2: FOCO NA AÇÃO ATUAL.**
+Sua frase deve refletir a ação que estou te passando.
+- **Ação Técnica Atual:** "${technicalMessage}"
+- **Ferramenta Usada:** "${toolName || 'Nenhuma'}"
+- **Argumentos:** ${argsJson}
+
+**REGRA 3: TRADUZA A FERRAMENTA.**
+Se uma ferramenta for usada, TRADUZA o nome técnico dela para uma ação de garimpo.
+- "search_" ou "discover_" se tornam "Garimpando", "Escavando", "Explorando veio de..."
+- "get_" ou "details" se tornam "Analisando a gema...", "Polindo a pepita..."
+
+**REGRA 4: SEJA CURTO E DIRETO.**
+Sua resposta deve ser APENAS a frase final, sem explicações, saudações ou emojis.
+
+**Exemplo de Processo:**
+- **Input:** Ferramenta="get_movie_details", Argumentos={"title":"Duna"}
+- **Pensamento:** A ferramenta é 'get_details'. A metáfora é 'Analisando a gema'. O argumento é 'Duna'.
+- **Resultado:** "Analisando a gema 'Duna'..."
+
+Agora, aplique estas regras e gere a frase.`;
+
+  try {
+    const response = await statusNarratorLlm.invoke(finalPrompt);
+    return response.content.toString().trim().replace(/"/g, '');
+  } catch (e) {
+    console.error('Erro ao gerar mensagem de status com a IA, usando fallback.', e);
+    return technicalMessage; // Fallback
+  }
+};
+
 // --- LÓGICA DO AGENTE ---
 
-const runManualAgent = async (
+const runManualAgent = async function* (
   chatHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[],
   userId: string
-): Promise<AsyncGenerator<any>> => {
+): AsyncGenerator<any> {
   // AsyncGenerator é como uma esteira rolante, onde não é preciso esperar terminar para mandar, ele é enviado continuamente
+
+  // NOVO: Emite o primeiro status
+  yield {
+    type: 'status',
+    message: await generateStatusMessage('Analisando a pergunta inicial do usuário.'),
+  };
+  await new Promise(resolve => setTimeout(resolve, 500)); // Pausa para UX
 
   const firstResponse = await llmWithTools.invoke(chatHistory);
   /*
@@ -68,9 +142,31 @@ const runManualAgent = async (
 
   if (toolCalls && toolCalls.length > 0) {
     console.log(`[Manual Agent] IA solicitou o uso de ${toolCalls.length} ferramenta(s).`);
+
+    // NOVO: Emite o status de que precisa de uma ferramenta
+    yield {
+      type: 'status',
+      message: await generateStatusMessage(
+        'Decidi que preciso usar uma de minhas ferramentas de busca.'
+      ),
+    };
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     const historyForSecondCall = [...chatHistory, firstResponse];
     // Você precisa registrar no histórico que a IA tentou usar uma ferramenta. Sem isso, a IA ficaria confusa na próxima etapa
 
+    // NOVO: Loop para emitir o status de cada ferramenta ANTES de executá-las
+    for (const toolCall of toolCalls) {
+      const toolName = toolCall.function.name;
+      const toolArgs = JSON.parse(toolCall.function.arguments);
+      yield {
+        type: 'status',
+        message: await generateStatusMessage('Vou usar uma ferramenta agora.', toolName, toolArgs),
+      };
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    // Agora, executamos todas as ferramentas em paralelo
     const toolOutputs = await Promise.all(
       toolCalls.map(async (toolCall: any) => {
         // 1. Pega o nome e os argumentos da ferramenta
@@ -80,8 +176,6 @@ const runManualAgent = async (
         console.log(`[Manual Agent] Executando ferramenta: ${toolName} com args:`, toolArgs);
 
         // 2. Procura e executa a ferramenta usando o orquestrador centralizado
-        // Esta é a única linha necessária. Ela chama a função em `tools.ts`
-        // que sabe como lidar com cada ferramenta individualmente.
         const output = await executeTool(toolName, { toolArgs, userId });
 
         // SEMPRE USAMOS JSON.stringify. Isso garante consistência.
@@ -114,15 +208,28 @@ const runManualAgent = async (
       Com este histórico completo, a IA pode finalmente formular uma resposta para o usuário.
     */
 
-    // Faz a segunda chamada à IA, agora com os resultados das ferramentas, e faz o stream da resposta.
-    return llmWithTools.stream(historyForSecondCall);
+    // NOVO: Emite o status de que está formulando a resposta final
+    yield {
+      type: 'status',
+      message: await generateStatusMessage(
+        'Já coletei os dados. Agora estou montando a melhor resposta para você.'
+      ),
+    };
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Faz a segunda chamada à IA e faz o stream da resposta, emitindo cada chunk.
+    const finalStream = await llmWithTools.stream(historyForSecondCall);
+    for await (const chunk of finalStream) {
+      // Emitimos um objeto padronizado para o consumidor da função
+      yield { type: 'chunk', content: chunk.content };
+    }
   } else {
     // Se não houver ferramentas, fazemos o stream da primeira resposta diretamente.
-    // Para isso, precisamos de uma função auxiliar para transformar a resposta única em um stream.
-    async function* streamFromSingleResponse() {
-      yield firstResponse;
+    const stream = await llmWithTools.stream(chatHistory);
+    for await (const chunk of stream) {
+      // Emitimos um objeto padronizado para o consumidor da função
+      yield { type: 'chunk', content: chunk.content };
     }
-    return streamFromSingleResponse();
   }
 };
 
@@ -231,13 +338,15 @@ export const streamResponse = async (conversationId: string, res: Response) => {
     fullHistory.push(...chatHistory);
 
     // O agente agora é chamado com o histórico já enriquecido.
-    const stream = await runManualAgent(fullHistory, userId);
+    const stream = runManualAgent(fullHistory, userId); // CORRIGIDO: Não precisa mais do `await` aqui
 
-    for await (const chunk of stream) {
-      const content = chunk.content?.toString() || '';
-      if (content) {
-        finalAnswer += content;
-        sendEvent({ type: 'chunk', content });
+    // Este loop agora lida com os eventos de 'status' e 'chunk' que o gerador emite
+    for await (const event of stream) {
+      if (event.type === 'status') {
+        sendEvent(event);
+      } else if (event.type === 'chunk' && event.content) {
+        finalAnswer += event.content;
+        sendEvent(event);
       }
     }
 

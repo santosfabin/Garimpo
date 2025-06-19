@@ -1,5 +1,3 @@
-// ARQUIVO: /backend/src/controller/conversationController.ts
-
 import { Request, Response } from 'express';
 // Remova a importação do repositório
 // import * as conversationRepo from '../repository/conversationRepository';
