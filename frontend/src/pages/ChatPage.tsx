@@ -103,13 +103,13 @@ export default function ChatPage() {
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
 
-    const currentInput = inputValue;
+    const currentInput = inputValue.trim();
     const userMessage: Message = { id: `user-${Date.now()}`, sender: 'user', text: currentInput };
 
-    // ADICIONADO: Um placeholder de STATUS para a IA.
-    const aiMessageId = `ai-placeholder-${Date.now()}`;
+    // --- CORREÇÃO #1: Declarar o ID do status AQUI ---
+    const statusMessageId = `status-placeholder-${Date.now()}`;
     const statusPlaceholder: Message = {
-      id: aiMessageId,
+      id: statusMessageId, // Usar o ID correto
       sender: 'status',
       text: 'Garimpo está se preparando...',
     };
@@ -138,35 +138,41 @@ export default function ChatPage() {
       }
 
       const eventSource = new EventSource(`/api/chat/stream/${currentConvId}`);
-      let isFirstChunk = true; // Flag para saber quando a resposta real começa
+
+      let aiMessageId = '';
+      let isFirstChunk = true;
 
       eventSource.onmessage = event => {
         const data = JSON.parse(event.data);
         switch (data.type) {
           case 'status':
-            // ATUALIZADO: Lida com eventos de status, atualizando o placeholder.
+            // --- CORREÇÃO #2: Usar o ID do status para encontrar a mensagem certa ---
             setMessages(prev =>
               prev.map(msg =>
-                msg.id === aiMessageId ? { ...msg, sender: 'status', text: data.message } : msg
+                msg.id === statusMessageId ? { ...msg, sender: 'status', text: data.message } : msg
               )
             );
             break;
+
           case 'chunk':
-            // ATUALIZADO: Lida com os chunks da resposta final.
-            setMessages(prev =>
-              prev.map(msg => {
-                if (msg.id === aiMessageId) {
-                  // Se for o primeiro chunk, substitui o texto de status. Senão, anexa.
-                  const newText = isFirstChunk
-                    ? data.content || ''
-                    : msg.text + (data.content || '');
-                  isFirstChunk = false; // Desativa a flag
-                  return { ...msg, sender: 'ai', text: newText };
-                }
-                return msg;
-              })
-            );
+            if (isFirstChunk) {
+              isFirstChunk = false;
+              aiMessageId = `ai-response-${Date.now()}`;
+
+              // --- CORREÇÃO #3: Usar o ID do status para filtrar ---
+              setMessages(prev => [
+                ...prev.filter(msg => msg.id !== statusMessageId),
+                { id: aiMessageId, sender: 'ai', text: data.content || '' },
+              ]);
+            } else {
+              setMessages(prev =>
+                prev.map(msg =>
+                  msg.id === aiMessageId ? { ...msg, text: msg.text + (data.content || '') } : msg
+                )
+              );
+            }
             break;
+
           case 'close':
             eventSource.close();
             setIsLoading(false);
@@ -175,9 +181,10 @@ export default function ChatPage() {
       };
 
       eventSource.onerror = () => {
+        // --- CORREÇÃO #4: Usar o ID do status para mostrar o erro ---
         setMessages(prev =>
           prev.map(msg =>
-            msg.id === aiMessageId
+            msg.id === statusMessageId
               ? { ...msg, sender: 'status', text: 'Erro de conexão com o servidor.' }
               : msg
           )
@@ -186,10 +193,10 @@ export default function ChatPage() {
         setIsLoading(false);
       };
     } catch (err: any) {
-      // ATUALIZADO: Se houver um erro antes do stream, removemos o placeholder e mostramos o erro
+      // --- CORREÇÃO #5: Filtrar usando o ID do status ---
       setMessages(prev => {
-        const filtered = prev.filter(msg => msg.id !== aiMessageId);
-        return [...filtered, { id: `status-${Date.now()}`, sender: 'status', text: err.message }];
+        const filtered = prev.filter(msg => msg.id !== statusMessageId);
+        return [...filtered, { id: `err-${Date.now()}`, sender: 'status', text: err.message }];
       });
       setIsLoading(false);
     }
@@ -234,9 +241,8 @@ export default function ChatPage() {
         refetchTrigger={refetchTrigger}
         onToggle={toggleSidebar}
       />
-      <div className="chat-page">
+      <div className={`chat-page ${!isSidebarOpen ? 'sidebar-collapsed' : ''}`}>
         <header className="chat-header">
-
           {/* ATENÇÃO: A sua estrutura original tinha um `div.header-title`. Mudei para H1 para manter a estrutura do meu primeiro exemplo, que era mais semântica. */}
           <h1>Garimpo ⛏️</h1>
           <button onClick={handleLogout} className="logout-button">

@@ -1,69 +1,101 @@
+/* src/components/Modal.css */
+
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.7); /* Fundo mais escuro */
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  -webkit-backdrop-filter: blur(4px); /* Efeito de vidro (opcional) */
+  backdrop-filter: blur(4px); /* Efeito de vidro (opcional) */
 }
 
 .modal-content {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
+  background: #2d2d30; /* Cor de fundo escura */
+  color: #f0f0f0; /* Cor do texto clara */
+  padding: 24px;
+  border-radius: 12px;
   width: 90%;
-  max-width: 500px;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  max-width: 450px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 15px;
+  margin-bottom: 15px;
 }
 
 .modal-header h2 {
   margin: 0;
+  font-size: 1.25rem;
 }
 
 .close-button {
   background: none;
   border: none;
-  font-size: 1.5rem;
+  font-size: 1.8rem;
+  line-height: 1;
   cursor: pointer;
+  color: #aaa;
+  transition: color 0.2s;
+}
+
+.close-button:hover {
+  color: white;
 }
 
 .modal-body {
-  padding: 20px 0;
+  padding: 10px 0;
+  line-height: 1.6;
+}
+
+.modal-body strong {
+  color: #fff;
+  font-weight: 600;
 }
 
 .modal-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  border-top: 1px solid #eee;
-  padding-top: 10px;
+  gap: 12px;
+  margin-top: 20px;
 }
 
 .modal-footer button {
-  padding: 10px 20px;
-  border-radius: 5px;
+  padding: 10px 22px;
+  border-radius: 6px;
   border: none;
   cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.modal-footer button:active {
+  transform: scale(0.98);
 }
 
 .cancel-button {
-  background-color: #6c757d;
+  background-color: #555;
   color: white;
+}
+.cancel-button:hover {
+  background-color: #666;
 }
 
 .confirm-button {
-  background-color: #dc3545; /* Vermelho para confirmar a exclusão */
+  background-color: #e53e3e; /* Vermelho mais moderno para perigo */
   color: white;
+}
+.confirm-button:hover {
+  background-color: #c53030;
 }
