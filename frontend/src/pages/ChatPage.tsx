@@ -65,9 +65,24 @@ export default function ChatPage() {
     setInputValue('');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    window.location.href = '/login';
+  // Substitua a função handleLogout existente por esta:
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/logout', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        console.error('Falha ao fazer logout no servidor.');
+        // Mesmo que falhe, vamos tentar limpar o lado do cliente
+      }
+    } catch (error) {
+      console.error('Erro de rede ao tentar fazer logout:', error);
+    } finally {
+      // Esta parte sempre executa, garantindo a limpeza e o redirecionamento
+      localStorage.removeItem('isLoggedIn');
+      window.location.href = '/login';
+    }
   };
 
   const handleSendMessage = async () => {
