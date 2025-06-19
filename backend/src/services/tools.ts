@@ -54,7 +54,6 @@ export const discoverToolSchema = {
           description: 'A nota média MÍNIMA que o filme deve ter (de 0 a 10).',
         },
         maxRating: {
-          // <-- NOVO
           type: 'number' as const,
           description: 'A nota média MÁXIMA que o filme deve ter (de 0 a 10).',
         },
@@ -63,7 +62,6 @@ export const discoverToolSchema = {
           description: 'O ano de lançamento do filme.',
         },
         sortBy: {
-          // <-- NOVO
           type: 'string' as const,
           description:
             "Como ordenar os resultados. Use 'vote_average.desc' para os mais bem avaliados e 'vote_average.asc' para os piores avaliados.",
@@ -105,6 +103,25 @@ const addUserPreferenceToolSchema = {
     },
   },
 };
+// Schema da ferramenta de filmografia
+const getPersonFilmographySchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_person_filmography',
+    description: 'Busca os principais filmes de um determinado ator ou diretor.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        personName: {
+          type: 'string' as const,
+          description:
+            'O nome do ator ou diretor a ser buscado. Ex: "Tom Hanks", "Christopher Nolan".',
+        },
+      },
+      required: ['personName'],
+    },
+  },
+};
 
 // Lista de schemas que será exportada e usada pelo LLM.
 // Para adicionar uma nova ferramenta para a IA, adicione seu schema aqui.
@@ -113,6 +130,7 @@ export const toolSchemas = [
   detailsToolSchema,
   discoverToolSchema,
   addUserPreferenceToolSchema,
+  getPersonFilmographySchema,
 ];
 
 // ==============================================================================
@@ -146,7 +164,9 @@ const toolExecutors: { [key: string]: (payload: ToolExecutorPayload) => Promise<
     return preferenceRepo.addPreference(userId, toolArgs.key, toolArgs.value);
   },
 
-  // Para adicionar uma nova ferramenta, adicione sua função de execução aqui.
+  get_person_filmography: async ({ toolArgs }) => {
+    return tmdbService.getPersonFilmography(toolArgs.personName);
+  },
 };
 
 // ==============================================================================

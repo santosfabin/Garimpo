@@ -167,6 +167,52 @@ export const discoverMovies = async ({
   }
 };
 
-// ==============================================================================
-// ||                      FIM DAS FUNÇÕES-FERRAMENTA PARA IA                    ||
-// ==============================================================================
+/**
+ * FERRAMENTA 4: Busca a filmografia de uma pessoa (ator ou diretor).
+ * Primeiro, encontra o ID da pessoa pelo nome. Depois, busca os filmes
+ * associados a esse ID.
+ */
+export const getPersonFilmography = async (personName: string): Promise<any> => {
+  try {
+    // Etapa 1: Buscar o ID da pessoa
+    const searchUrl = `${BASE_URL}/search/person?query=${encodeURIComponent(
+      personName
+    )}&api_key=${API_KEY}`;
+    const searchResponse = await fetch(searchUrl);
+    const searchData: any = await searchResponse.json();
+
+    if (searchData.results.length === 0) {
+      return `Não consegui encontrar uma pessoa chamada "${personName}".`;
+    }
+
+    const personId = searchData.results[0].id;
+
+    // Etapa 2: Usar o ID para buscar os créditos em filmes
+    const filmographyUrl = `${BASE_URL}/person/${personId}/movie_credits?api_key=${API_KEY}`;
+    const filmographyResponse = await fetch(filmographyUrl);
+    const filmographyData: any = await filmographyResponse.json();
+
+    // O TMDB retorna papéis de 'cast' (ator) e 'crew' (equipe, incluindo diretor)
+    const filmography = [...filmographyData.cast, ...filmographyData.crew];
+
+    if (filmography.length === 0) {
+      return `Apesar de encontrar "${personName}", não achei nenhum filme associado.`;
+    }
+
+    // Ordena os filmes por popularidade (os mais relevantes primeiro) e remove duplicatas
+    const uniqueFilms = Array.from(new Map(filmography.map(film => [film.id, film])).values());
+    const sortedFilms = uniqueFilms.sort((a, b) => b.popularity - a.popularity);
+    
+    // Retorna os 10 filmes mais populares
+    return sortedFilms.slice(0, 10).map((movie: any) => ({
+      title: movie.title,
+      release_date: movie.release_date,
+      // Se for um ator, mostra o personagem. Se for da equipe, mostra o cargo.
+      role: movie.character || movie.job,
+    }));
+
+  } catch (error) {
+    console.error('Erro em getPersonFilmography:', error);
+    return `Ocorreu um erro ao buscar a filmografia de "${personName}".`;
+  }
+};
