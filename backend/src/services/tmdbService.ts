@@ -121,15 +121,15 @@ export const getMovieDetails = async (title: string): Promise<any> => {
 export const discoverMovies = async ({
   genreName,
   minRating,
-  maxRating, // <-- NOVO PARÂMETRO
+  maxRating,
   year,
-  sortBy = 'vote_average.desc', // <-- NOVO PARÂMETRO com valor padrão
+  sortBy = 'vote_average.desc',
 }: {
   genreName?: string;
   minRating?: number;
-  maxRating?: number; // <-- NOVO
+  maxRating?: number;
   year?: number;
-  sortBy?: 'vote_average.desc' | 'vote_average.asc'; // <-- NOVO
+  sortBy?: 'vote_average.desc' | 'vote_average.asc';
 }): Promise<any> => {
   try {
     const genres = await getGenreMap();
@@ -145,7 +145,7 @@ export const discoverMovies = async ({
     if (year) url += `&primary_release_year=${year}`;
     if (genreId) url += `&with_genres=${genreId}`;
     if (minRating) url += `&vote_average.gte=${minRating}`;
-    if (maxRating) url += `&vote_average.lte=${maxRating}`; // <-- NOVO FILTRO
+    if (maxRating) url += `&vote_average.lte=${maxRating}`;
 
     const response = await fetch(url);
     const data: any = await response.json();
@@ -202,7 +202,7 @@ export const getPersonFilmography = async (personName: string): Promise<any> => 
     // Ordena os filmes por popularidade (os mais relevantes primeiro) e remove duplicatas
     const uniqueFilms = Array.from(new Map(filmography.map(film => [film.id, film])).values());
     const sortedFilms = uniqueFilms.sort((a, b) => b.popularity - a.popularity);
-    
+
     // Retorna os 10 filmes mais populares
     return sortedFilms.slice(0, 10).map((movie: any) => ({
       title: movie.title,
@@ -210,7 +210,6 @@ export const getPersonFilmography = async (personName: string): Promise<any> => 
       // Se for um ator, mostra o personagem. Se for da equipe, mostra o cargo.
       role: movie.character || movie.job,
     }));
-
   } catch (error) {
     console.error('Erro em getPersonFilmography:', error);
     return `Ocorreu um erro ao buscar a filmografia de "${personName}".`;

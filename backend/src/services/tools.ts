@@ -1,7 +1,12 @@
-// src/services/tools.ts
-
 import * as tmdbService from './tmdbService';
 import * as preferenceRepo from '../repository/preferenceRepository'; // Repositório para preferências
+
+export class UnknownToolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnknownToolError';
+  }
+}
 
 // ==============================================================================
 // ||                    1. DEFINIÇÃO DOS SCHEMAS (INPUTS)                     ||
@@ -123,6 +128,37 @@ const getPersonFilmographySchema = {
   },
 };
 
+const removeUserPreferenceToolSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'remove_user_preference_item',
+    description:
+      "AÇÃO PRIORITÁRIA: Remove um item específico de QUALQUER lista de preferências, seja ela de favoritos ou não-favoritos. Use esta ferramenta SEMPRE que o usuário pedir para 'remover', 'tirar', 'retirar' ou indicar que não gosta mais de algo que já estava na lista. É mais importante remover do que adicionar à lista de 'não-gostos'.",
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        key: {
+          type: 'string',
+          description: 'A categoria da qual a preferência será removida (ex: "favorite_actors").',
+          enum: [
+            'favorite_genres',
+            'favorite_actors',
+            'favorite_directors',
+            'favorite_movies',
+            'favorite_decades',
+            'disliked_genres',
+            'disliked_actors',
+            'movie_moods',
+            'other_notes',
+          ],
+        },
+        value: { type: 'string', description: 'O valor exato a ser removido (ex: "Tom Hanks").' },
+      },
+      required: ['key', 'value'],
+    },
+  },
+};
+
 // Lista de schemas que será exportada e usada pelo LLM.
 // Para adicionar uma nova ferramenta para a IA, adicione seu schema aqui.
 export const toolSchemas = [
@@ -131,6 +167,7 @@ export const toolSchemas = [
   discoverToolSchema,
   addUserPreferenceToolSchema,
   getPersonFilmographySchema,
+  removeUserPreferenceToolSchema,
 ];
 
 // ==============================================================================
@@ -167,6 +204,11 @@ const toolExecutors: { [key: string]: (payload: ToolExecutorPayload) => Promise<
   get_person_filmography: async ({ toolArgs }) => {
     return tmdbService.getPersonFilmography(toolArgs.personName);
   },
+
+  remove_user_preference_item: async ({ toolArgs, userId }) => {
+    if (!userId) return 'Erro: Usuário não identificado.';
+    return preferenceRepo.removePreference(userId, toolArgs.key, toolArgs.value);
+  },
 };
 
 // ==============================================================================
@@ -177,7 +219,8 @@ const toolExecutors: { [key: string]: (payload: ToolExecutorPayload) => Promise<
 export const executeTool = (toolName: string, payload: ToolExecutorPayload): Promise<any> => {
   const executor = toolExecutors[toolName];
   if (!executor) {
-    return Promise.resolve(
+    // É crucial que ele LANCE o erro aqui
+    throw new UnknownToolError(
       `Erro: Ferramenta desconhecida ou sem executor definido: '${toolName}'.`
     );
   }
