@@ -13,15 +13,6 @@ app.use(express.json());
 
 app.use('/api', routes);
 
-// Serve arquivos estáticos do React (build)
-const staticPath = path.join(__dirname, '../../frontend/dist');
-app.use(express.static(staticPath));
-
-// Redireciona qualquer rota não API para index.html
-app.get(`/{*splat}`, (_req, res) => {
-  res.sendFile(path.join(staticPath, 'index.html'));
-});
-
 pool
   .connect()
   .then(() => {

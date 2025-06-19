@@ -1,9 +1,9 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { AIMessage, HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
-import * as tmdbService from './tmdbService';
 import config from '../config';
 import * as conversationRepo from '../repository/conversationRepository';
 import { Response } from 'express';
+import { availableTools, toolSchemas } from './tools';
 
 // --- CONFIGURAÇÃO DO MODELO E FERRAMENTAS ---
 
@@ -13,97 +13,121 @@ const llm = new ChatOpenAI({
   openAIApiKey: config.OPENAI_API_KEY,
 });
 
-const searchToolSchema = {
-  name: 'search_movies_by_keyword',
-  description: 'Busca por filmes baseado em um gênero, ator, diretor ou palavra-chave.',
-  parameters: {
-    type: 'object',
-    properties: { query: { type: 'string', description: 'O termo de busca.' } },
-    required: ['query'],
-  },
-};
-const detailsToolSchema = {
-  name: 'get_movie_details',
-  description: 'Busca informações detalhadas sobre um filme específico pelo título.',
-  parameters: {
-    type: 'object',
-    properties: { title: { type: 'string', description: 'O título do filme.' } },
-    required: ['title'],
-  },
-};
-const discoverToolSchema = {
-  name: 'discover_movies',
-  description: 'Descobre filmes com base em filtros como gênero, ano e nota mínima.',
-  parameters: {
-    type: 'object',
-    properties: {
-      genreName: { type: 'string' },
-      minRating: { type: 'number' },
-      year: { type: 'number' },
-    },
-    required: [],
-  },
-};
-
+//  FAÇA O BIND DAS FERRAMENTAS (usando a lista de schemas)
+// Permite "amarrar" ou "vincular" configurações extras a uma instância do LLM, sem modificar a instância original
 const llmWithTools = llm.bind({
-  tools: [
-    { type: 'function', function: searchToolSchema },
-    { type: 'function', function: detailsToolSchema },
-    { type: 'function', function: discoverToolSchema },
-  ],
+  tools: toolSchemas,
 });
 
-// --- LÓGICA DO AGENTE MANUAL ---
+// --- LÓGICA DO AGENTE ---
 
 const runManualAgent = async (
   chatHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[]
-): Promise<string> => {
+): Promise<AsyncGenerator<any>> => {
+  // AsyncGenerator é como uma esteira rolante, onde não é preciso esperar terminar para mandar, ele é enviado continuamente
   const firstResponse = await llmWithTools.invoke(chatHistory);
+  /*
+    {
+          1. O CONTEÚDO PRINCIPAL
+      content: '', // <--- Geralmente vazio quando uma ferramenta é chamada
+          Se a IA decidir chamar uma ferramenta, este campo geralmente virá vazio (''). A IA não está respondendo ao usuário ainda, ela está primeiro pedindo para você executar uma ação (a ferramenta).
+          Se a IA decidir responder diretamente (sem usar ferramenta), este campo conterá a resposta em texto. Ex: content: 'Olá! Sobre qual filme você gostaria de saber?'.
+
+          2. INFORMAÇÕES ADICIONAIS
+          Se a IA não quiser usar uma ferramenta, este campo será undefined
+      additional_kwargs: {
+        tool_calls: [ // <--- A PARTE MAIS IMPORTANTE!
+          {
+            id: 'call_abc123',
+            type: 'function',
+            function: {
+              name: 'get_movie_details', // O nome da ferramenta que a IA escolheu
+              arguments: '{"title":"Matrix"}' // Os argumentos como uma string JSON
+            }
+          }
+              Poderia haver mais chamadas de ferramentas aqui
+        ]
+      },
+
+          3. METADADOS E OUTRAS INFORMAÇÕES
+      response_metadata: {
+          ... informações sobre o token, etc.
+      },
+          ... outras propriedades da LangChain
+    }
+  */
   const toolCalls = firstResponse.additional_kwargs.tool_calls;
 
   if (toolCalls && toolCalls.length > 0) {
     console.log(`[Manual Agent] IA solicitou o uso de ${toolCalls.length} ferramenta(s).`);
-
     const historyForSecondCall = [...chatHistory, firstResponse];
+    // Você precisa registrar no histórico que a IA tentou usar uma ferramenta. Sem isso, a IA ficaria confusa na próxima etapa
 
     const toolOutputs = await Promise.all(
       toolCalls.map(async (toolCall: any) => {
+        // 1. Pega o nome e os argumentos da ferramenta
         const toolName = toolCall.function.name;
         const toolArgs = JSON.parse(toolCall.function.arguments);
-        let output: any;
 
         console.log(`[Manual Agent] Executando ferramenta: ${toolName} com args:`, toolArgs);
-        if (toolName === 'search_movies_by_keyword') {
-          output = await tmdbService.searchMoviesByKeyword(toolArgs.query);
-        } else if (toolName === 'get_movie_details') {
-          output = await tmdbService.getMovieDetails(toolArgs.title);
-        } else if (toolName === 'discover_movies') {
-          output = await tmdbService.discoverMovies(toolArgs);
+
+        // 2. Procura a função correspondente no nosso mapa
+        const toolToExecute = availableTools[toolName]; // Ex: availableTools['get_movie_details']
+
+        let output: any;
+
+        // 3. Executa a função se ela foi encontrada
+        if (toolToExecute) {
+          output = await toolToExecute(toolArgs); // Chama a função dinamicamente
         } else {
-          output = `Ferramenta desconhecida: ${toolName}`;
+          output = `Erro: Ferramenta desconhecida '${toolName}'.`;
         }
+
+        // 4. Retorna a mensagem formatada para a IA
         return new ToolMessage({ content: JSON.stringify(output), tool_call_id: toolCall.id });
       })
     );
 
-    historyForSecondCall.push(...toolOutputs);
+    /*
+      [
+        new ToolMessage({
+          content: '{"title":"The Matrix","director":"The Wachowskis",...}', // Resultado da primeira ferramenta (em string)
+          tool_call_id: 'call_abc' // Ligado à primeira "ordem"
+        }),
+        ...
+      ]
+    */
 
-    const finalResponse = await llmWithTools.invoke(historyForSecondCall);
-    return finalResponse.content.toString();
+    historyForSecondCall.push(...toolOutputs);
+    /*
+      1. Usuário perguntou algo.
+      2. IA decidiu usar ferramentas.
+      3. Aqui estão os resultados dessas ferramentas.
+    */
+
+    return llmWithTools.stream(historyForSecondCall);
   } else {
-    return firstResponse.content.toString();
+    // Se não houver ferramentas, fazemos o stream da primeira resposta diretamente.
+    // Para isso, precisamos de uma função auxiliar para transformar a resposta única em um stream.
+    async function* streamFromSingleResponse() {
+      yield firstResponse;
+    }
+    return streamFromSingleResponse();
   }
 };
 
 // --- FUNÇÕES EXPORTADAS ---
 
 export const streamResponse = async (conversationId: string, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
+  res.setHeader('Content-Type', 'text/event-stream'); // conexão que ficará aberta para eu enviar eventos (dados) continuamente
+  res.setHeader('Cache-Control', 'no-cache'); // Impede que o navegador ou proxies guardem a resposta em cache (não ter duplicidade de informação)
+  res.setHeader('Connection', 'keep-alive'); // Pede para a conexão TCP/IP entre o servidor e o cliente permanecer aberta
+  res.flushHeaders(); // Envia esses cabeçalhos (headers) para o cliente imediatamente
 
-  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  const sendEvent = (data: any) => res.write(`data: ${JSON.stringify(data)}\n\n`); // Escreve dados na conexão aberta
+
+  // Variável para juntar a resposta completa e salvar no DB
+  let finalAnswer = '';
 
   try {
     const chatHistory = await conversationRepo.getHistory(conversationId);
@@ -114,16 +138,27 @@ export const streamResponse = async (conversationId: string, res: Response) => {
       ...chatHistory,
     ];
 
-    const finalAnswer = await runManualAgent(fullHistory);
+    // 1. Obtém o stream do agente
+    const stream = await runManualAgent(fullHistory);
 
-    if (finalAnswer) {
-      await conversationRepo.addMessage(conversationId, 'ai', finalAnswer);
+    // 2. Itera sobre o stream, pedaço por pedaço
+    // Está esperando o próximo "pedaço" (chunk) do stream ficar disponível.
+    for await (const chunk of stream) {
+      // O conteúdo de cada pedaço
+      const content = chunk.content?.toString() || '';
+
+      if (content) {
+        // Acumula na variável para salvar no final
+        finalAnswer += content;
+        // Envia o pedaço para o frontend IMEDIATAMENTE
+        sendEvent({ type: 'chunk', content });
+      }
     }
 
-    const chunks = finalAnswer.split(' ');
-    for (const chunk of chunks) {
-      sendEvent({ type: 'chunk', content: chunk + ' ' });
-      await new Promise(resolve => setTimeout(resolve, 50));
+    // 3. Após o loop terminar, salva a resposta completa no banco
+    if (finalAnswer) {
+      await conversationRepo.addMessage(conversationId, 'ai', finalAnswer);
+      console.log(`[Stream] Resposta completa salva no DB para a conversa ${conversationId}.`);
     }
   } catch (error) {
     console.error('Erro durante o processamento do stream:', error);

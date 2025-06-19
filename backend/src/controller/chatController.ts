@@ -24,12 +24,11 @@ export const handleChatRequest = async (req: Request, res: Response) => {
     if (conversationId) {
       const ownerId = await conversationRepo.getConversationOwner(conversationId);
       if (!ownerId || ownerId !== userId) {
-        return res
-          .status(403)
-          .json({ error: 'Você não tem permissão para acessar esta conversa.' });
+        return res.status(403).end();
       }
     } else {
       const title = await chatService.generateTitle(message);
+      // cria um ID de uma nova conversa
       const newConversation = await conversationRepo.createConversation(userId, title);
       conversationId = newConversation.id;
     }

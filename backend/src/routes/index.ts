@@ -16,7 +16,11 @@ router.use('/login', login);
 router.use(verifyActiveSession);
 
 router.use('/logout', logout);
+
+// Envio e recebimento de mensagem
 router.use('/chat', chat);
+
+// Gerencimanto das conversas
 router.use('/conversations', conversations);
 
 export default router;

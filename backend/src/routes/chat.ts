@@ -6,6 +6,7 @@ const { handleChatRequest, streamChatResponse } = require('../controller/chatCon
 const router = express.Router();
 
 // Rota para ENVIAR uma mensagem e iniciar/continuar a conversa
+// recebe um ID de uma mensagem para ser 'escutada'
 router.post('/', handleChatRequest);
 
 // Rota para RECEBER a resposta da IA via streaming
