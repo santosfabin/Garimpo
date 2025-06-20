@@ -3,8 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import './ChatPage.css';
 import ConversationSidebar from '../components/ConversationSidebar';
 import Modal from '../components/Modal';
+import SkeletonMessage from '../components/SkeletonMessage'; // Importe o novo componente
 
-// Interface do seu código original
 interface Message {
   id: string;
   sender: 'user' | 'ai' | 'status';
@@ -12,13 +12,11 @@ interface Message {
 }
 
 export default function ChatPage() {
-  // --- Estados do seu código original ---
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false); // Novo estado para o histórico
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-
-  // --- Estados adicionados para as novas funcionalidades ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [conversationToDelete, setConversationToDelete] = useState<{
@@ -27,19 +25,14 @@ export default function ChatPage() {
   } | null>(null);
   const [refetchTrigger, setRefetchTrigger] = useState(0);
 
-  // --- Ref do seu código original ---
   const messageListRef = useRef<HTMLDivElement>(null);
   // Ref adicionada para o textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // --- Funções e Efeitos ---
-
-  // Função de toggle para a nova sidebar
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
   };
 
-  // Efeito de scroll do seu código original
   useEffect(() => {
     if (messageListRef.current) {
       messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
@@ -62,22 +55,20 @@ export default function ChatPage() {
     }
   }, [inputValue]);
 
-  // ========================================================================
-  // INÍCIO DAS FUNÇÕES LÓGICAS - COM AJUSTES PARA O NOVO FLUXO DE STATUS
-  // ========================================================================
-
   const handleSelectConversation = async (id: string) => {
-    if (isLoading) return;
-    setIsLoading(true);
+    if (isLoading && id !== activeConversationId) return;
+
+    setIsFetchingHistory(true); // Ativa o skeleton loader
     setActiveConversationId(id);
-    setMessages([]);
+    setMessages([]); // Limpa as mensagens antigas para dar lugar ao skeleton
 
     try {
       const response = await fetch(`/api/conversations/${id}/messages`);
-      if (!response.ok) throw new Error('Falha ao carregar o histórico.');
+      if (!response.ok) throw new Error('Falha ao carregar histórico.');
+
       const historyData = await response.json();
       const formattedMessages: Message[] = historyData.map((msg: any) => ({
-        id: msg.id,
+        id: msg.id.toString(),
         sender: msg.sender,
         text: msg.text,
       }));
@@ -85,7 +76,7 @@ export default function ChatPage() {
     } catch (error: any) {
       setMessages([{ id: 'err-1', sender: 'status', text: error.message }]);
     } finally {
-      setIsLoading(false);
+      setIsFetchingHistory(false); // Desativa o skeleton loader
     }
   };
 
@@ -124,11 +115,8 @@ export default function ChatPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: currentInput, conversationId: activeConversationId }),
       });
-      if (!postResponse.ok) {
-        const errorData = await postResponse.json();
-        throw new Error(errorData.error || 'Falha ao enviar a mensagem.');
-      }
 
+      if (!postResponse.ok) throw new Error('Falha ao enviar a mensagem.');
       const postData = await postResponse.json();
       const currentConvId = postData.conversationId;
 
@@ -140,6 +128,10 @@ export default function ChatPage() {
       const eventSource = new EventSource(`/api/chat/stream/${currentConvId}`);
 
       let aiMessageId = '';
+
+      const updateMessageById = (updateFn: (msg: Message) => Message) => {
+        setMessages(prev => prev.map(msg => (msg.id === aiMessageId ? updateFn(msg) : msg)));
+      };
       let isFirstChunk = true;
 
       eventSource.onmessage = event => {
@@ -172,39 +164,25 @@ export default function ChatPage() {
               );
             }
             break;
-
           case 'close':
             eventSource.close();
             setIsLoading(false);
             break;
         }
       };
-
       eventSource.onerror = () => {
-        // --- CORREÇÃO #4: Usar o ID do status para mostrar o erro ---
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === statusMessageId
-              ? { ...msg, sender: 'status', text: 'Erro de conexão com o servidor.' }
-              : msg
-          )
-        );
+        updateMessageById(msg => ({ ...msg, sender: 'status', text: 'Erro de conexão.' }));
         eventSource.close();
         setIsLoading(false);
       };
     } catch (err: any) {
-      // --- CORREÇÃO #5: Filtrar usando o ID do status ---
-      setMessages(prev => {
-        const filtered = prev.filter(msg => msg.id !== statusMessageId);
-        return [...filtered, { id: `err-${Date.now()}`, sender: 'status', text: err.message }];
-      });
+      setMessages(prev => [
+        ...prev,
+        { id: `status-${Date.now()}`, sender: 'status', text: err.message },
+      ]);
       setIsLoading(false);
     }
   };
-
-  // ========================================================================
-  // FIM DAS FUNÇÕES LÓGICAS
-  // ========================================================================
 
   const openDeleteModal = (id: string, title: string) => {
     setConversationToDelete({ id, title });
@@ -219,7 +197,11 @@ export default function ChatPage() {
   const confirmDelete = async () => {
     if (!conversationToDelete) return;
     try {
-      await fetch(`/api/conversations/${conversationToDelete.id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/conversations/${conversationToDelete.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Falha ao apagar a conversa.');
+
       handleNewChat();
       setRefetchTrigger(prev => prev + 1);
     } catch (error) {
@@ -231,7 +213,6 @@ export default function ChatPage() {
 
   return (
     <div className="page-layout">
-      {/* ATENÇÃO: Seu código tinha um `onToggle` aqui que não existia na props do Sidebar. Removi para evitar erros. */}
       <ConversationSidebar
         isOpen={isSidebarOpen}
         onSelectConversation={handleSelectConversation}
@@ -241,17 +222,22 @@ export default function ChatPage() {
         refetchTrigger={refetchTrigger}
         onToggle={toggleSidebar}
       />
-      <div className={`chat-page ${!isSidebarOpen ? 'sidebar-collapsed' : ''}`}>
+      <div className="chat-page">
         <header className="chat-header">
-          {/* ATENÇÃO: A sua estrutura original tinha um `div.header-title`. Mudei para H1 para manter a estrutura do meu primeiro exemplo, que era mais semântica. */}
           <h1>Garimpo ⛏️</h1>
           <button onClick={handleLogout} className="logout-button">
             Sair
           </button>
         </header>
+
         <main className="chat-container" ref={messageListRef}>
-          {/* ATENÇÃO: Removi a condição `isLoading && messages.length === 0` pois agora o status é uma mensagem na lista, o que torna o spinner global desnecessário. */}
-          {messages.length > 0 ? (
+          {isFetchingHistory ? (
+            <div className="message-list">
+              {[...Array(5)].map((_, index) => (
+                <SkeletonMessage key={index} align={index % 2 === 0 ? 'left' : 'right'} />
+              ))}
+            </div>
+          ) : messages.length > 0 ? (
             <div className="message-list">
               {messages.map(msg => (
                 <div key={msg.id} className={`message ${msg.sender}-message`}>
@@ -266,8 +252,8 @@ export default function ChatPage() {
             </div>
           )}
         </main>
+
         <footer className="chat-input-area">
-          {/* ATENÇÃO: Seu código tinha um `div.chat-input-wrapper` que não é estritamente necessário. Removi para simplificar, mas mantive a estrutura interna. */}
           <div className="chat-input-wrapper">
             <textarea
               ref={textareaRef}
@@ -315,11 +301,14 @@ export default function ChatPage() {
         onConfirm={confirmDelete}
         title="Confirmar Exclusão"
       >
+        {/* O texto principal continua como um parágrafo */}
         <p>
           Você tem certeza que deseja apagar a conversa "
           <strong>{conversationToDelete?.title}</strong>"?
         </p>
-        <p>Esta ação não pode ser desfeita.</p>
+
+        {/* O aviso agora está dentro de uma div com uma classe específica */}
+        <div className="modal-warning">Esta ação não pode ser desfeita.</div>
       </Modal>
     </div>
   );

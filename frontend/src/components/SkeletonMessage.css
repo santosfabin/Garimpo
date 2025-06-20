@@ -1,0 +1,45 @@
+/* src/components/SkeletonMessage.css */
+
+/* Animação de pulso com cores do tema escuro */
+@keyframes pulse-dark {
+  0% {
+    background-color: #2a2b32; /* Cor mais escura/base */
+  }
+  50% {
+    background-color: #343541; /* Cor mais clara/pulso */
+  }
+  100% {
+    background-color: #2a2b32; /* Volta para a cor base */
+  }
+}
+
+.skeleton-message-wrapper {
+  display: flex;
+  margin-bottom: 15px; /* Mesmo gap das mensagens reais */
+  padding: 0 20px; /* Alinha com o padding do container de chat */
+}
+
+.skeleton-message-wrapper.align-right {
+  justify-content: flex-end;
+}
+
+.skeleton-message-wrapper.align-left {
+  justify-content: flex-start;
+}
+
+.skeleton-message {
+  height: 50px;
+  border-radius: 18px;
+  /* Aplica a nova animação */
+  animation: pulse-dark 1.5s ease-in-out infinite;
+  max-width: 70%; /* Mesmo max-width das mensagens */
+}
+
+/* Ajusta o radius para combinar com as mensagens reais */
+.align-right .skeleton-message {
+  border-bottom-right-radius: 4px;
+}
+
+.align-left .skeleton-message {
+  border-bottom-left-radius: 4px;
+}

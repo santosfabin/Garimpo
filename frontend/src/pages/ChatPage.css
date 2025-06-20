@@ -247,3 +247,8 @@
 .chat-container::-webkit-scrollbar-thumb:hover {
   background-color: #b3b3b3;
 }
+
+/* Esconde a bolha da mensagem da IA se ela estiver vazia, evitando "fantasmas" */
+.ai-message.is-empty {
+  display: none;
+}
