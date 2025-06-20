@@ -74,7 +74,6 @@ export const getUserPreferences = async (userId: string): Promise<string> => {
     formattedPrefs += `- Atores Favoritos: ${prefs.favorite_actors.join(', ')}\n`;
   if (prefs.favorite_movies?.length)
     formattedPrefs += `- IDs de Filmes Favoritos: ${prefs.favorite_movies.join(', ')}\n`;
-  if (prefs.other_notes) formattedPrefs += `- Outras Notas: ${prefs.other_notes}\n`;
 
   // Garante que não retorne uma string vazia se todos os campos estiverem vazios
   if (formattedPrefs === 'As preferências do usuário são:\n') {

@@ -227,7 +227,7 @@ const runRobustAgent = async function* (
     ),
   };
   const finalPrompt = new SystemMessage(
-    'Você não conseguiu encontrar uma resposta usando suas ferramentas. Analise o histórico da conversa e explique ao usuário de forma amigável e concisa que você não pôde completar o pedido. Se possível, sugira uma alternativa.'
+    'Você não conseguiu encontrar uma resposta usando suas ferramentas. Analise o histórico da conversa e explique ao usuário de forma amigável e concisa que você não pôde completar o pedido. Se possível, sugira uma alternativa. Se o usuário perguntar sobre qualquer outro assunto que não seja filmes, séries ou cinema, recuse educadamente a pergunta e o lembre de seu propósito.'
   );
   const finalResponseStream = await llmWithTools.stream([...history, finalPrompt]);
   for await (const chunk of finalResponseStream) {
@@ -321,11 +321,6 @@ export const streamResponse = async (conversationId: string, res: Response) => {
         preferenceParts.push(
           `os atores que eu NÃO gosto são: ${userPreferences.disliked_actors.join(', ')}`
         );
-      }
-
-      // Anotações
-      if (userPreferences.other_notes?.length > 0) {
-        preferenceParts.push(`outras anotações: "${userPreferences.other_notes.join('; ')}"`);
       }
 
       // SÓ DEPOIS DE COLETAR TUDO, CRIA A STRING E ENVIA PARA A IA

@@ -54,10 +54,10 @@ CREATE TABLE user_preferences (
     -- Armazena uma lista de diretores que o usuário gosta.
     favorite_directors TEXT[] DEFAULT ARRAY[]::TEXT[],
 
-    -- (CORRIGIDO) Armazena uma lista de filmes que o usuário gosta. Ex: {'Forrest Gump'}
+    -- Armazena uma lista de filmes que o usuário gosta. Ex: {'Forrest Gump'}
     favorite_movies TEXT[] DEFAULT ARRAY[]::TEXT[],
     
-    -- (CORRIGIDO) Armazena uma lista de décadas preferidas. Ex: {'1990s', '2020s'}
+    -- Armazena uma lista de décadas preferidas. Ex: {'1990s', '2020s'}
     favorite_decades TEXT[] DEFAULT ARRAY[]::TEXT[],
     
     -- Armazena uma lista de gêneros que o usuário NÃO gosta.
@@ -68,10 +68,6 @@ CREATE TABLE user_preferences (
     
     -- Guarda uma lista de "vibes" ou humores. Ex: {'filme para relaxar', 'filme para pensar'}
     movie_moods TEXT[] DEFAULT ARRAY[]::TEXT[],
-    
-    -- (CORRIGIDO) Um campo para anotações que não se encaixam nos outros campos.
-    -- Ex: {'gosto de filmes com reviravoltas', 'prefiro finais felizes'}
-    other_notes TEXT[] DEFAULT ARRAY[]::TEXT[],
     
     -- Guarda a data e hora da última vez que as preferências foram alteradas.
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

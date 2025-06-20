@@ -23,7 +23,6 @@ export const addPreference = async (userId: string, key: string, value: string) 
     'disliked_genres',
     'disliked_actors',
     'movie_moods',
-    'other_notes',
   ];
   if (!allowedKeys.includes(key)) {
     throw new Error(`Chave de preferência inválida: ${key}`);
@@ -116,7 +115,6 @@ export const upsertPreferences = async (userId: string, preferences: Record<stri
     'disliked_genres',
     'disliked_actors',
     'movie_moods',
-    'other_notes',
   ];
 
   const keys = Object.keys(preferences).filter(key => allowedKeys.includes(key));
@@ -166,7 +164,6 @@ export const removePreference = async (userId: string, key: string, value: strin
     'disliked_genres',
     'disliked_actors',
     'movie_moods',
-    'other_notes',
   ];
   if (!allowedKeys.includes(key)) {
     throw new Error(`Chave de preferência inválida para remoção: ${key}`);
