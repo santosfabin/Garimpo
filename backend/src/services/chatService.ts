@@ -68,56 +68,138 @@ Agora, gere a frase.`;
 // --- LÓGICA DO AGENTE ROBUSTO (AGORA COM NARRADOR) ---
 
 const runRobustAgent = async function* (
-  initialHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage)[],
+  initialHistory: (HumanMessage | AIMessage | SystemMessage | ToolMessage | AIMessageChunk)[],
   userId: string
 ): AsyncGenerator<any> {
   const MAX_TURNS = 3;
-  let currentTurn = 0;
   let history = [...initialHistory];
 
-  while (currentTurn < MAX_TURNS) {
-    currentTurn++;
+  for (let currentTurn = 1; currentTurn <= MAX_TURNS; currentTurn++) {
     console.log(`[Agente Robusto] Iniciando turno de pensamento #${currentTurn}`);
-
-    // AJUSTADO: Usa a IA Narradora em vez de texto fixo
     if (currentTurn === 1) {
       yield { type: 'status', message: await generateStatusMessage('Analisando sua pergunta.') };
     }
 
-    const response: AIMessage = await llmWithTools.invoke(history);
-    const toolCalls = response.additional_kwargs.tool_calls;
+    const stream = await llmWithTools.stream(history);
 
-    if (response.content && typeof response.content === 'string' && response.content.length > 0) {
-      console.log('[Agente Robusto] IA respondeu diretamente. Encerrando.');
-      const finalStream = await llm.stream(history);
-      for await (const chunk of finalStream) {
+    let aiMessage = undefined;
+
+    // --- Estado para Gerenciar a Execução Concorrente das Ferramentas ---
+    // Armazena os pedaços agregados (nome, args, id) para cada chamada de ferramenta.
+    const toolCallBuilders: { name?: string; args?: string; id?: string }[] = [];
+    // Rastreia as promessas das ferramentas que já foram despachadas para execução.
+    const dispatchedToolPromises: Map<number, Promise<ToolMessage>> = new Map();
+    // Guarda o maior índice de ferramenta visto até agora no stream.
+    let latestToolIndex = -1;
+
+    /**
+     * Despacha uma ferramenta para execução assim que ela estiver completa.
+     * @param index O índice da ferramenta a ser executada.
+     */
+    const dispatchTool = async (index: number) => {
+      // Evita despachar a mesma ferramenta duas vezes.
+      if (dispatchedToolPromises.has(index)) return;
+
+      const toolToRun = toolCallBuilders[index];
+      // Garante que temos todos os dados necessários antes de executar.
+      if (!toolToRun || !toolToRun.name || !toolToRun.args || !toolToRun.id) {
+        console.warn(`[Agente Robusto] Tentativa de despachar ferramenta #${index} incompleta.`);
+        return;
+      }
+
+      const toolArgs = JSON.parse(toolToRun.args);
+
+      console.log(`[Agente Robusto] Despachando ferramenta #${index}: ${toolToRun.name}`);
+      // Informa ao usuário que a ferramenta está sendo usada.
+
+      // Inicia a execução da ferramenta e armazena a promessa.
+      // A promessa resolve para um ToolMessage quando a execução termina.
+      const promise = executeTool(toolToRun.name, { toolArgs, userId }).then(output => {
+        const content =
+          typeof output === 'string' || output === null
+            ? String(output)
+            : JSON.stringify(output, null, 2);
+
+        console.log(``);
+        console.log(`[TESTE] RESPOSTA DA FERRAMENTA ${content}`);
+        console.log(``);
+        return new ToolMessage({ content, tool_call_id: toolToRun.id! });
+      });
+
+      dispatchedToolPromises.set(index, promise);
+      return {
+        type: 'status',
+        message: await generateStatusMessage('Usando uma ferramenta.', toolToRun.name, toolArgs),
+      };
+    };
+
+    // --- Processamento Principal do Stream ---
+    for await (const chunk of stream) {
+      if (!aiMessage) {
+        aiMessage = chunk;
+      } else {
+        aiMessage = aiMessage.concat(chunk);
+      }
+
+      // Se for um pedaço de texto, envie-o diretamente.
+      if (typeof chunk.content === 'string' && chunk.content.length > 0) {
         yield { type: 'chunk', content: chunk.content };
       }
-      return;
+
+      // Se for um pedaço de chamada de ferramenta, processe-o.
+      if (chunk.tool_call_chunks) {
+        for (const toolChunk of chunk.tool_call_chunks) {
+          const { index: toolChunkIndex } = toolChunk;
+          if (toolChunkIndex === undefined) continue;
+
+          // Garante que o array de construtores tenha o tamanho necessário.
+          while (toolCallBuilders.length <= toolChunkIndex) {
+            toolCallBuilders.push({});
+          }
+
+          // Agrega os dados do chunk no construtor correspondente.
+          const builder = toolCallBuilders[toolChunkIndex];
+          if (toolChunk.name) builder.name = (builder.name ?? '') + toolChunk.name;
+          if (toolChunk.args) builder.args = (builder.args ?? '') + toolChunk.args;
+          if (toolChunk.id) builder.id = (builder.id ?? '') + toolChunk.id;
+
+          // GATILHO: Se um chunk para um NOVO índice de ferramenta chegou,
+          // isso significa que a definição da ferramenta anterior está completa.
+          if (toolChunkIndex > latestToolIndex) {
+            latestToolIndex = toolChunkIndex;
+            // Despacha a ferramenta anterior (se não for a primeira).
+            if (latestToolIndex > 0) {
+              const statusMessage = await dispatchTool(latestToolIndex - 1);
+              yield statusMessage;
+            }
+          }
+        }
+      }
     }
 
-    if (toolCalls && toolCalls.length > 0) {
-      console.log(`[Agente Robusto] IA solicitou ${toolCalls.length} ferramenta(s).`);
-      history.push(response);
+    // --- Lógica Pós-Stream ---
+    if (aiMessage) {
+      history.push(aiMessage); // Adiciona a resposta completa da IA ao histórico.
+    }
+
+    if (toolCallBuilders.length > 0) {
+      // GATILHO FINAL: O fim do stream é o gatilho para despachar a última ferramenta.
+      await dispatchTool(latestToolIndex);
+
+      console.log(
+        `[Agente Robusto] Aguardando ${dispatchedToolPromises.size} ferramenta(s) em execução...`
+      );
 
       try {
-        for (const toolCall of toolCalls) {
-          const toolName = toolCall.function.name;
-          const toolArgs = JSON.parse(toolCall.function.arguments);
+        // Aguarda todas as ferramentas despachadas (que rodam em paralelo) terminarem.
+        const toolMessages = await Promise.all(dispatchedToolPromises.values());
+        console.log('[Agente Robusto] Todas as ferramentas responderam.');
 
-          // AJUSTADO: Usa a IA Narradora para o status da ferramenta
-          yield {
-            type: 'status',
-            message: await generateStatusMessage('Usando uma ferramenta.', toolName, toolArgs),
-          };
-
-          const output = await executeTool(toolName, { toolArgs, userId });
-          const content =
-            typeof output === 'string' || output === null ? String(output) : JSON.stringify(output);
-          history.push(new ToolMessage({ content, tool_call_id: toolCall.id }));
-        }
+        // Adiciona os resultados das ferramentas ao histórico e continua o ciclo.
+        history.push(...toolMessages);
+        continue;
       } catch (error) {
-        console.error('[Agente Robusto] Erro ao executar ferramenta:', error);
+        console.error('[Agente Robusto] Erro ao executar ferramenta(s):', error);
         if (error instanceof UnknownToolError) {
           yield {
             type: 'chunk',
@@ -128,26 +210,26 @@ const runRobustAgent = async function* (
         }
         return;
       }
-    } else {
-      console.log('[Agente Robusto] IA parou sem resposta ou ferramenta. Acionando Plano B.');
-      break;
     }
+
+    // Se o modelo parou sem dar resposta ou ferramenta, quebra o loop.
+    break;
   }
 
   // --- PLANO B ---
-  console.log('[Agente Robusto] Limite de tentativas atingido. Forçando resposta final.');
+  console.log(
+    '[Agente Robusto] Limite de tentativas atingido ou IA parou. Forçando resposta final.'
+  );
   yield {
     type: 'status',
     message: await generateStatusMessage(
       'Não encontrei de primeira, pensando em como responder...'
     ),
   };
-
   const finalPrompt = new SystemMessage(
     'Você não conseguiu encontrar uma resposta usando suas ferramentas. Analise o histórico da conversa e explique ao usuário de forma amigável e concisa que você não pôde completar o pedido. Se possível, sugira uma alternativa.'
   );
-
-  const finalResponseStream = await llm.stream([...history, finalPrompt]);
+  const finalResponseStream = await llmWithTools.stream([...history, finalPrompt]);
   for await (const chunk of finalResponseStream) {
     yield { type: 'chunk', content: chunk.content };
   }
@@ -186,7 +268,8 @@ export const streamResponse = async (conversationId: string, res: Response) => {
       "Você é 'Garimpo', um assistente de cinema divertido e especialista. Seu único propósito é ajudar usuários a encontrar os melhores filmes. Responda sempre em português do Brasil. " +
       'Seja direto e conciso. Não use frases de preparação como "Garimpo está se preparando...", "Aguarde um momento..." ou qualquer variação. Vá direto para a resposta final. ' +
       'Use as ferramentas disponíveis para buscar informações. ' +
-      'Passe os nomes de filmes, atores, diretores e gêneros para as ferramentas EXATAMENTE como o usuário escreveu ou como eles apareceram em resultados anteriores. Não tente traduzir nada.';
+      'Passe os nomes de filmes, atores, diretores e gêneros para as ferramentas EXATAMENTE como o usuário escreveu ou como eles apareceram em resultados anteriores. Não tente traduzir nada.' +
+      'Quando você chamar ferramentas, antes de fazer a chamada, diga que você vai chamar a ferramenta';
 
     const fullHistory: (SystemMessage | HumanMessage | AIMessage | ToolMessage)[] = [
       new SystemMessage(systemPrompt),
