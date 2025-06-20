@@ -32,7 +32,7 @@ const statusNarratorLlm = new ChatOpenAI({
 });
 
 /**
- * REINTRODUZIDO: Gera uma mensagem de status criativa e temática usando a IA.
+ * REINTRODUZIDO: Gera uma mensagem de status criativa e temática usando a IA, de forma assíncrona.
  */
 const generateStatusMessage = async (
   technicalMessage: string,
@@ -57,11 +57,16 @@ Siga estas regras RÍGIDAS para criar a frase:
 Agora, gere a frase.`;
 
   try {
-    const response = await statusNarratorLlm.invoke(finalPrompt);
-    return response.content.toString().trim().replace(/"/g, '');
+    const stream = await statusNarratorLlm.stream(finalPrompt);
+    let narratorResponseContent = '';
+    for await (const chunk of stream) {
+      narratorResponseContent += chunk.content;
+    }
+
+    return narratorResponseContent.trim().replace(/"/g, '');
   } catch (e) {
     console.error('Erro ao gerar mensagem de status com a IA, usando fallback.', e);
-    return 'Garimpando...';
+    return 'Garimpando...'; // Fallback em caso de erro.
   }
 };
 
@@ -367,9 +372,14 @@ export const generateTitle = async (firstMessage: string): Promise<string> => {
   });
   const prompt = `Você é um assistente que cria títulos curtos e descritivos (máximo 5 palavras) para conversas, baseado na primeira mensagem do usuário. Responda APENAS com o título, sem nenhuma outra palavra ou pontuação. Mensagem do usuário: "${firstMessage}"`;
 
-  const response = await titleLlm.invoke(prompt);
+  const stream = await titleLlm.stream(prompt);
+  let accumulatedContent = '';
+  for await (const chunk of stream) {
+    accumulatedContent += chunk.content;
+  }
 
-  const title = response.content.toString().trim().replace(/"/g, '');
+  const title = accumulatedContent.trim().replace(/"/g, '');
+
   console.log(`[chatService] Título gerado: "${title}"`);
   return title;
 };
