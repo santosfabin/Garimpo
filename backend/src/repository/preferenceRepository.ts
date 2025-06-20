@@ -1,17 +1,19 @@
 import pool from '../database/connection';
 
 /**
- * Adiciona ou atualiza uma preferência de usuário.
- * Esta função usa a cláusula ON CONFLICT do PostgreSQL para criar uma nova
- * linha de preferência se não existir, ou atualizar os arrays se já existir.
- * @param userId - O ID do usuário.
- * @param key - A coluna a ser atualizada ('favorite_genres', 'favorite_actors', etc.).
- * @param value - O valor a ser adicionado ao array (ex: 'Ação', 'Tom Hanks').
- * @returns Um objeto de sucesso ou lança um erro.
+ * Adiciona ou atualiza uma preferência de usuário, modificando a função original do usuário.
+ * 1. Valida a 'key' contra uma lista de chaves permitidas.
+ * 2. Remove o valor da própria coluna (para evitar duplicatas e movê-lo para o final).
+ * 3. Remove o valor da coluna oposta (se existir).
+ * 4. Adiciona o valor à coluna correta.
+ * Tudo isso em uma única operação atômica no banco de dados.
+ *
+ * @param userId O ID do usuário.
+ * @param key A coluna de preferência (ex: 'favorite_genres').
+ * @param value O valor a ser adicionado (ex: 'Terror').
  */
-
 export const addPreference = async (userId: string, key: string, value: string) => {
-  // Validação para garantir que a 'key' seja uma das colunas permitidas, prevenindo SQL Injection.
+  // SEU CÓDIGO DE VALIDAÇÃO, MANTIDO INTEGRALMENTE
   const allowedKeys = [
     'favorite_genres',
     'favorite_actors',
@@ -27,27 +29,50 @@ export const addPreference = async (userId: string, key: string, value: string) 
     throw new Error(`Chave de preferência inválida: ${key}`);
   }
 
+  // Mapa para definir as colunas opostas
+  const oppositeKeyMap: { [key: string]: string | undefined } = {
+    favorite_genres: 'disliked_genres',
+    disliked_genres: 'favorite_genres',
+    favorite_actors: 'disliked_actors',
+    disliked_actors: 'favorite_actors',
+  };
+
+  const oppositeKey = oppositeKeyMap[key];
+
+  // Constrói a cláusula SET para a query
+  const setClauses: string[] = [];
+
+  // 1. Cláusula para a coluna principal (key): remove o valor e depois o adiciona.
+  // Isso substitui a sua cláusula WHERE, pois já garante que não haverá duplicatas
+  // e sempre coloca o item no final.
+  setClauses.push(
+    `${key} = array_append(array_remove(COALESCE(user_preferences.${key}, ARRAY[]::TEXT[]), $2), $2)`
+  );
+
+  // 2. Se houver uma chave oposta, adiciona a cláusula para remover o valor dela.
+  if (oppositeKey) {
+    setClauses.push(
+      `${oppositeKey} = array_remove(COALESCE(user_preferences.${oppositeKey}, ARRAY[]::TEXT[]), $2)`
+    );
+  }
+
+  const setClauseString = setClauses.join(', ');
+
   try {
+    // SUA ESTRUTURA DE QUERY, MODIFICADA APENAS NA CLÁUSULA SET
+    // A cláusula WHERE foi removida porque a nova cláusula SET já lida com duplicatas.
     const query = `
       INSERT INTO user_preferences (user_id, ${key})
       VALUES ($1, ARRAY[$2])
       ON CONFLICT (user_id)
       DO UPDATE SET
-        ${key} = array_append(
-          COALESCE(user_preferences.${key}, ARRAY[]::TEXT[]),
-          $2
-        )
-      WHERE user_preferences.${key} IS NULL OR NOT (user_preferences.${key} @> ARRAY[$2]);
+        ${setClauseString};
     `;
-    // COALESCE: Trata o caso de a coluna ser nula, começando com um array vazio.
-    // array_append: Adiciona o novo valor ao array existente.
-    // WHERE NOT: Impede a adição de valores duplicados no array.
-    // Adicionado `user_preferences.${key} IS NULL` para garantir que a atualização ocorra se o array for nulo.
 
     await pool.query(query, [userId, value]);
 
     console.log(
-      `[Repo] Preferência '${value}' adicionada para a chave '${key}' do usuário ${userId}.`
+      `[Repo] Preferência '${value}' adicionada/atualizada para a chave '${key}' do usuário ${userId}.`
     );
     return { success: true, message: `Preferência '${value}' salva!` };
   } catch (error) {
