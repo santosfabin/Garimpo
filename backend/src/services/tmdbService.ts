@@ -340,3 +340,123 @@ export const getUpcomingMovies = async (targetYear?: number): Promise<any> => {
     return `Ocorreu um erro ao tentar buscar os próximos lançamentos.`;
   }
 };
+/**
+ * Função auxiliar para buscar o ID de um filme pelo título.
+ * Muitas ferramentas precisam do ID, então centralizamos essa lógica.
+ * @param title O título do filme.
+ * @returns O ID do filme ou null se não for encontrado.
+ */
+const getMovieIdByTitle = async (title: string): Promise<number | null> => {
+  const searchUrl = `${BASE_URL}/search/movie?query=${encodeURIComponent(
+    title
+  )}&api_key=${API_KEY}`;
+  const searchResponse = await fetch(searchUrl);
+  const searchData: any = await searchResponse.json();
+
+  if (searchData.results.length === 0) {
+    return null;
+  }
+  return searchData.results[0].id;
+};
+
+/**
+ * FERRAMENTA 8: Busca Filmes Similares.
+ * Essencial para recomendações baseadas em um filme que o usuário gostou.
+ */
+export const getSimilarMovies = async (title: string): Promise<any> => {
+  try {
+    const movieId = await getMovieIdByTitle(title);
+    if (!movieId) {
+      return `Não consegui encontrar um filme chamado "${title}" para buscar similares.`;
+    }
+
+    const url = `${BASE_URL}/movie/${movieId}/similar?api_key=${API_KEY}&language=pt-BR`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+    const data: any = await response.json();
+
+    if (data.results.length === 0) {
+      return `Não encontrei filmes similares a "${title}".`;
+    }
+
+    return data.results.slice(0, 5).map((movie: any) => ({
+      title: movie.title,
+      overview: movie.overview,
+      release_date: movie.release_date,
+    }));
+  } catch (error) {
+    console.error('Erro em getSimilarMovies:', error);
+    return `Ocorreu um erro ao buscar filmes similares a "${title}".`;
+  }
+};
+
+/**
+ * FERRAMENTA 9: Busca o Elenco Principal de um Filme.
+ * Responde perguntas diretas sobre quem atua em um determinado filme.
+ */
+export const getMovieCast = async (title: string): Promise<any> => {
+  try {
+    const movieId = await getMovieIdByTitle(title);
+    if (!movieId) {
+      return `Não consegui encontrar um filme chamado "${title}" para buscar o elenco.`;
+    }
+
+    const url = `${BASE_URL}/movie/${movieId}/credits?api_key=${API_KEY}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+    const data: any = await response.json();
+
+    if (data.cast.length === 0) {
+      return `Não encontrei informações de elenco para "${title}".`;
+    }
+
+    // Retorna os 5 atores principais e seus personagens
+    return data.cast.slice(0, 5).map((person: any) => ({
+      actor: person.name,
+      character: person.character,
+    }));
+  } catch (error) {
+    console.error('Erro em getMovieCast:', error);
+    return `Ocorreu um erro ao buscar o elenco de "${title}".`;
+  }
+};
+
+/**
+ * FERRAMENTA 10: Busca Onde Assistir a um Filme (Provedores de Streaming).
+ * Uma das ferramentas mais úteis para o usuário final.
+ */
+export const getWatchProviders = async (title: string): Promise<any> => {
+  try {
+    const movieId = await getMovieIdByTitle(title);
+    if (!movieId) {
+      return `Não consegui encontrar um filme chamado "${title}" para verificar onde assistir.`;
+    }
+
+    const url = `${BASE_URL}/movie/${movieId}/watch/providers?api_key=${API_KEY}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+    const data: any = await response.json();
+
+    // A API retorna provedores por país. Vamos focar no Brasil (BR).
+    const providers = data.results?.BR;
+    if (!providers || !providers.flatrate) {
+      return `Não encontrei informações de onde assistir "${title}" em serviços de streaming no Brasil.`;
+    }
+
+    // 'flatrate' geralmente significa que está incluso na assinatura do streaming.
+    const streamingServices = providers.flatrate.map((p: any) => p.provider_name);
+
+    return {
+      title: title,
+      streaming: streamingServices,
+    };
+  } catch (error) {
+    console.error('Erro em getWatchProviders:', error);
+    return `Ocorreu um erro ao verificar onde assistir "${title}".`;
+  }
+};
+
+/**
+ * FERRAMENTA 11: Busca Detalhes de uma Série de TV.
+ * Expande as capacidades do Garimpo para o mundo das séries.
+ */

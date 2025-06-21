@@ -205,6 +205,61 @@ const upcomingToolSchema = {
     },
   },
 };
+const getSimilarMoviesSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_similar_movies',
+    description:
+      'Encontra filmes similares a um filme específico que o usuário gostou. Ideal para "me recomende um filme parecido com...".',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string' as const,
+          description: 'O título do filme base para a busca de similares.',
+        },
+      },
+      required: ['title'],
+    },
+  },
+};
+
+const getMovieCastSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_movie_cast',
+    description: 'Busca o elenco principal de um filme específico.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string' as const,
+          description: 'O título do filme para buscar o elenco.',
+        },
+      },
+      required: ['title'],
+    },
+  },
+};
+
+const getWatchProvidersSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_watch_providers',
+    description:
+      'Verifica em quais serviços de streaming um filme está disponível para assistir no Brasil.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string' as const,
+          description: 'O título do filme para verificar a disponibilidade.',
+        },
+      },
+      required: ['title'],
+    },
+  },
+};
 
 // Lista de schemas que será exportada e usada pelo LLM.
 // Para adicionar uma nova ferramenta para a IA, adicione seu schema aqui.
@@ -219,6 +274,9 @@ export const toolSchemas = [
   popularToolSchema,
   topRatedToolSchema,
   upcomingToolSchema,
+  getSimilarMoviesSchema,
+  getMovieCastSchema,
+  getWatchProvidersSchema,
 ];
 
 // ==============================================================================
@@ -275,6 +333,18 @@ const toolExecutors: { [key: string]: (payload: ToolExecutorPayload) => Promise<
 
   get_upcoming_movies: async ({ toolArgs }) => {
     return tmdbService.getUpcomingMovies(toolArgs.year);
+  },
+
+  get_similar_movies: async ({ toolArgs }) => {
+    return tmdbService.getSimilarMovies(toolArgs.title);
+  },
+
+  get_movie_cast: async ({ toolArgs }) => {
+    return tmdbService.getMovieCast(toolArgs.title);
+  },
+
+  get_watch_providers: async ({ toolArgs }) => {
+    return tmdbService.getWatchProviders(toolArgs.title);
   },
 };
 
