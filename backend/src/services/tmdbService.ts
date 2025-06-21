@@ -215,3 +215,128 @@ export const getPersonFilmography = async (personName: string): Promise<any> => 
     return `Ocorreu um erro ao buscar a filmografia de "${personName}".`;
   }
 };
+
+/**
+ * FERRAMENTA 5: Busca Filmes Atualmente em Cartaz.
+ * Ideal para perguntas como "o que está passando no cinema?".
+ */
+export const getNowPlayingMovies = async (): Promise<any> => {
+  try {
+    const url = `${BASE_URL}/movie/now_playing?api_key=${API_KEY}&language=pt-BR®ion=BR`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+    const data: any = await response.json();
+    if (data.results.length === 0) return `Não encontrei nenhum filme em cartaz no momento.`;
+
+    return data.results.slice(0, 5).map((movie: any) => ({
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      release_date: movie.release_date,
+      vote_average: movie.vote_average,
+    }));
+  } catch (error) {
+    console.error('Erro em getNowPlayingMovies:', error);
+    return `Ocorreu um erro ao tentar buscar os filmes em cartaz.`;
+  }
+};
+
+/**
+ * FERRAMENTA 6: Busca os Filmes Mais Populares.
+ * Ideal para perguntas como "quais os filmes do momento?" ou "me indique filmes populares".
+ */
+export const getPopularMovies = async (): Promise<any> => {
+  try {
+    const url = `${BASE_URL}/movie/popular?api_key=${API_KEY}&language=pt-BR®ion=BR`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+    const data: any = await response.json();
+    if (data.results.length === 0) return `Não encontrei filmes populares no momento.`;
+
+    return data.results.slice(0, 5).map((movie: any) => ({
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      release_date: movie.release_date,
+      vote_average: movie.vote_average,
+    }));
+  } catch (error) {
+    console.error('Erro em getPopularMovies:', error);
+    return `Ocorreu um erro ao tentar buscar os filmes populares.`;
+  }
+};
+
+/**
+ * FERRAMENTA 7: Busca os Filmes Mais Bem Avaliados.
+ * Ideal para perguntas sobre "os melhores filmes de todos os tempos" ou "filmes aclamados pela crítica".
+ */
+export const getTopRatedMovies = async (): Promise<any> => {
+  try {
+    const url = `${BASE_URL}/movie/top_rated?api_key=${API_KEY}&language=pt-BR®ion=BR`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+    const data: any = await response.json();
+    if (data.results.length === 0)
+      return `Não foi possível encontrar os filmes mais bem avaliados.`;
+
+    return data.results.slice(0, 5).map((movie: any) => ({
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      release_date: movie.release_date,
+      vote_average: movie.vote_average,
+    }));
+  } catch (error) {
+    console.error('Erro em getTopRatedMovies:', error);
+    return `Ocorreu um erro ao tentar buscar os filmes mais bem avaliados.`;
+  }
+};
+
+/**
+ * FERRAMENTA 8: Busca os Próximos Lançamentos.
+ * Ideal para perguntas sobre "o que vem por aí no cinema" ou "próximos lançamentos".
+ */
+// No arquivo: backend/src/services/tmdbService.ts
+
+export const getUpcomingMovies = async (targetYear?: number): Promise<any> => {
+  try {
+    const url = `${BASE_URL}/movie/upcoming?api_key=${API_KEY}&language=pt-BR®ion=BR`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Erro na API do TMDB: ${response.statusText}`);
+
+    const data: any = await response.json();
+    let results = data.results;
+
+    // Se um ano específico foi fornecido, filtramos os resultados ANTES de enviar para a IA.
+    if (targetYear) {
+      console.log(`[tmdbService] Filtrando próximos lançamentos para o ano de ${targetYear}...`);
+      results = results.filter((movie: any) => {
+        // Garante que a data de lançamento existe antes de tentar criar um objeto Date
+        if (movie.release_date) {
+          const releaseYear = new Date(movie.release_date).getFullYear();
+          return releaseYear === targetYear;
+        }
+        return false;
+      });
+    }
+
+    if (results.length === 0) {
+      if (targetYear) {
+        return `Não encontrei informações sobre lançamentos para o ano de ${targetYear}.`;
+      }
+      return `Não encontrei informações sobre os próximos lançamentos.`;
+    }
+
+    return results.slice(0, 10).map((movie: any) => ({
+      // Aumentei para 10 para dar mais opções
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      release_date: movie.release_date,
+      vote_average: movie.vote_average,
+    }));
+  } catch (error) {
+    console.error('Erro em getUpcomingMovies:', error);
+    return `Ocorreu um erro ao tentar buscar os próximos lançamentos.`;
+  }
+};

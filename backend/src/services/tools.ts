@@ -157,6 +157,55 @@ const removeUserPreferenceToolSchema = {
   },
 };
 
+const nowPlayingToolSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_now_playing_movies',
+    description:
+      'Busca a lista de filmes que estão atualmente em cartaz nos cinemas. Use para perguntas como "o que está passando no cinema?" ou "quais os filmes mais recentes?".',
+    parameters: { type: 'object' as const, properties: {}, required: [] },
+  },
+};
+
+const popularToolSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_popular_movies',
+    description:
+      'Busca os filmes mais populares do momento. Use para perguntas como "quais os filmes do momento?" ou "me indique filmes populares".',
+    parameters: { type: 'object' as const, properties: {}, required: [] },
+  },
+};
+
+const topRatedToolSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_top_rated_movies',
+    description:
+      'Busca os filmes mais bem avaliados de todos os tempos. Use para perguntas sobre "os melhores filmes de todos os tempos" ou "filmes aclamados".',
+    parameters: { type: 'object' as const, properties: {}, required: [] },
+  },
+};
+
+const upcomingToolSchema = {
+  type: 'function' as const,
+  function: {
+    name: 'get_upcoming_movies',
+    description:
+      'Busca a lista de filmes que serão lançados em breve. Use para perguntas sobre "próximos lançamentos", "o que vem por aí no cinema" ou quando o usuário pedir por filmes de um ano futuro (como 2025, 2026, etc.).',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        year: {
+          type: 'number' as const,
+          description: 'O ano específico para filtrar os lançamentos futuros. Ex: 2025.',
+        },
+      },
+      required: [], // O ano é opcional, então required continua vazio
+    },
+  },
+};
+
 // Lista de schemas que será exportada e usada pelo LLM.
 // Para adicionar uma nova ferramenta para a IA, adicione seu schema aqui.
 export const toolSchemas = [
@@ -166,6 +215,10 @@ export const toolSchemas = [
   addUserPreferenceToolSchema,
   getPersonFilmographySchema,
   removeUserPreferenceToolSchema,
+  nowPlayingToolSchema,
+  popularToolSchema,
+  topRatedToolSchema,
+  upcomingToolSchema,
 ];
 
 // ==============================================================================
@@ -206,6 +259,22 @@ const toolExecutors: { [key: string]: (payload: ToolExecutorPayload) => Promise<
   remove_user_preference_item: async ({ toolArgs, userId }) => {
     if (!userId) return 'Erro: Usuário não identificado.';
     return preferenceRepo.removePreference(userId, toolArgs.key, toolArgs.value);
+  },
+
+  get_now_playing_movies: async () => {
+    return tmdbService.getNowPlayingMovies();
+  },
+
+  get_popular_movies: async () => {
+    return tmdbService.getPopularMovies();
+  },
+
+  get_top_rated_movies: async () => {
+    return tmdbService.getTopRatedMovies();
+  },
+
+  get_upcoming_movies: async ({ toolArgs }) => {
+    return tmdbService.getUpcomingMovies(toolArgs.year);
   },
 };
 

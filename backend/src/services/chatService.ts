@@ -78,35 +78,33 @@ const runRobustAgent = async function* (
 ): AsyncGenerator<any> {
   const MAX_TURNS = 3;
   let history = [...initialHistory];
+  let finalAnswerGenerated = false; // <<< [SOLUÇÃO 1/3] Inicializa a bandeira
+
+  // LOG 0: O que o agente recebeu no início de tudo?
+  console.log('--- [LOG 0] INÍCIO DO AGENTE ---');
+  console.log('Histórico Inicial Recebido:', JSON.stringify(history, null, 2));
 
   for (let currentTurn = 1; currentTurn <= MAX_TURNS; currentTurn++) {
-    console.log(`[Agente Robusto] Iniciando turno de pensamento #${currentTurn}`);
+    // LOG 1: O que o agente está pensando no início de cada turno?
+    console.log(`\n\n--- [LOG 1] INÍCIO DO TURNO #${currentTurn} ---`);
+    console.log('Histórico Atual:', JSON.stringify(history, null, 2));
+
     if (currentTurn === 1) {
       yield { type: 'status', message: await generateStatusMessage('Analisando sua pergunta.') };
     }
 
     const stream = await llmWithTools.stream(history);
 
-    let aiMessage = undefined;
+    let aiMessage: AIMessageChunk | undefined = undefined;
 
-    // --- Estado para Gerenciar a Execução Concorrente das Ferramentas ---
-    // Armazena os pedaços agregados (nome, args, id) para cada chamada de ferramenta.
     const toolCallBuilders: { name?: string; args?: string; id?: string }[] = [];
-    // Rastreia as promessas das ferramentas que já foram despachadas para execução.
     const dispatchedToolPromises: Map<number, Promise<ToolMessage>> = new Map();
-    // Guarda o maior índice de ferramenta visto até agora no stream.
     let latestToolIndex = -1;
 
-    /**
-     * Despacha uma ferramenta para execução assim que ela estiver completa.
-     * @param index O índice da ferramenta a ser executada.
-     */
     const dispatchTool = async (index: number) => {
-      // Evita despachar a mesma ferramenta duas vezes.
       if (dispatchedToolPromises.has(index)) return;
 
       const toolToRun = toolCallBuilders[index];
-      // Garante que temos todos os dados necessários antes de executar.
       if (!toolToRun || !toolToRun.name || !toolToRun.args || !toolToRun.id) {
         console.warn(`[Agente Robusto] Tentativa de despachar ferramenta #${index} incompleta.`);
         return;
@@ -115,19 +113,19 @@ const runRobustAgent = async function* (
       const toolArgs = JSON.parse(toolToRun.args);
 
       console.log(`[Agente Robusto] Despachando ferramenta #${index}: ${toolToRun.name}`);
-      // Informa ao usuário que a ferramenta está sendo usada.
+      console.log(`[Agente Robusto] >> Argumentos:`, toolArgs); // Adicione esta linha
 
-      // Inicia a execução da ferramenta e armazena a promessa.
-      // A promessa resolve para um ToolMessage quando a execução termina.
+      console.log(`[Agente Robusto] Despachando ferramenta #${index}: ${toolToRun.name}`);
       const promise = executeTool(toolToRun.name, { toolArgs, userId }).then(output => {
         const content =
           typeof output === 'string' || output === null
             ? String(output)
             : JSON.stringify(output, null, 2);
 
-        console.log(``);
-        console.log(`[TESTE] RESPOSTA DA FERRAMENTA ${content}`);
-        console.log(``);
+        // LOG 2: O que a ferramenta retornou?
+        console.log(`\n--- [LOG 2] RESULTADO DA FERRAMENTA: ${toolToRun.name} ---`);
+        console.log('Output:', content);
+
         return new ToolMessage({ content, tool_call_id: toolToRun.id! });
       });
 
@@ -138,7 +136,6 @@ const runRobustAgent = async function* (
       };
     };
 
-    // --- Processamento Principal do Stream ---
     for await (const chunk of stream) {
       if (!aiMessage) {
         aiMessage = chunk;
@@ -146,33 +143,26 @@ const runRobustAgent = async function* (
         aiMessage = aiMessage.concat(chunk);
       }
 
-      // Se for um pedaço de texto, envie-o diretamente.
       if (typeof chunk.content === 'string' && chunk.content.length > 0) {
         yield { type: 'chunk', content: chunk.content };
       }
 
-      // Se for um pedaço de chamada de ferramenta, processe-o.
       if (chunk.tool_call_chunks) {
         for (const toolChunk of chunk.tool_call_chunks) {
           const { index: toolChunkIndex } = toolChunk;
           if (toolChunkIndex === undefined) continue;
 
-          // Garante que o array de construtores tenha o tamanho necessário.
           while (toolCallBuilders.length <= toolChunkIndex) {
             toolCallBuilders.push({});
           }
 
-          // Agrega os dados do chunk no construtor correspondente.
           const builder = toolCallBuilders[toolChunkIndex];
           if (toolChunk.name) builder.name = (builder.name ?? '') + toolChunk.name;
           if (toolChunk.args) builder.args = (builder.args ?? '') + toolChunk.args;
           if (toolChunk.id) builder.id = (builder.id ?? '') + toolChunk.id;
 
-          // GATILHO: Se um chunk para um NOVO índice de ferramenta chegou,
-          // isso significa que a definição da ferramenta anterior está completa.
           if (toolChunkIndex > latestToolIndex) {
             latestToolIndex = toolChunkIndex;
-            // Despacha a ferramenta anterior (se não for a primeira).
             if (latestToolIndex > 0) {
               const statusMessage = await dispatchTool(latestToolIndex - 1);
               yield statusMessage;
@@ -183,13 +173,22 @@ const runRobustAgent = async function* (
     }
 
     // --- Lógica Pós-Stream ---
+    // LOG 3: Qual foi a resposta completa da IA neste turno?
+    console.log(`\n--- [LOG 3] RESPOSTA COMPLETA DA IA NO TURNO #${currentTurn} ---`);
+    console.log(JSON.stringify(aiMessage, null, 2));
+
     if (aiMessage) {
-      history.push(aiMessage); // Adiciona a resposta completa da IA ao histórico.
+      history.push(aiMessage);
     }
 
-    if (toolCallBuilders.length > 0) {
+    const hasToolCalls = toolCallBuilders.length > 0;
+
+    if (hasToolCalls) {
       // GATILHO FINAL: O fim do stream é o gatilho para despachar a última ferramenta.
-      await dispatchTool(latestToolIndex);
+      const finalStatusMessage = await dispatchTool(latestToolIndex);
+      if (finalStatusMessage) {
+        yield finalStatusMessage;
+      }
 
       console.log(
         `[Agente Robusto] Aguardando ${dispatchedToolPromises.size} ferramenta(s) em execução...`
@@ -200,8 +199,16 @@ const runRobustAgent = async function* (
         const toolMessages = await Promise.all(dispatchedToolPromises.values());
         console.log('[Agente Robusto] Todas as ferramentas responderam.');
 
-        // Adiciona os resultados das ferramentas ao histórico e continua o ciclo.
+        // LOG 4: Quais mensagens de ferramenta serão adicionadas ao histórico?
+        console.log(`\n--- [LOG 4] MENSAGENS DE FERRAMENTA PARA O PRÓXIMO TURNO ---`);
+        console.log(JSON.stringify(toolMessages, null, 2));
+
         history.push(...toolMessages);
+
+        // LOG 5: O agente vai continuar para o próximo turno.
+        console.log(
+          `\n--- [LOG 5] FIM DO TURNO #${currentTurn}. CONTINUANDO PARA O PRÓXIMO. ---\n`
+        );
         continue;
       } catch (error) {
         console.error('[Agente Robusto] Erro ao executar ferramenta(s):', error);
@@ -215,38 +222,55 @@ const runRobustAgent = async function* (
         }
         return;
       }
+    } else {
+      // <<< [SOLUÇÃO 2/3] Se não há 'tool_calls', a IA deu uma resposta final.
+      // A resposta já foi enviada via 'yield' no loop do stream.
+      // Portanto, levantamos a bandeira e saímos.
+      console.log(
+        '[Agente Robusto] Nenhuma chamada de ferramenta detectada. Resposta é considerada final.'
+      );
+      finalAnswerGenerated = true;
+      // LOG 6: O agente vai sair do loop.
+      console.log(`\n--- [LOG 6] FIM DO TURNO #${currentTurn}. SAINDO DO LOOP. ---`);
+      break;
     }
-
-    // Se o modelo parou sem dar resposta ou ferramenta, quebra o loop.
-    break;
   }
 
   // --- PLANO B ---
-  console.log(
-    '[Agente Robusto] Limite de tentativas atingido ou IA parou. Forçando resposta final.'
-  );
-  yield {
-    type: 'status',
-    message: await generateStatusMessage(
-      'Não encontrei de primeira, pensando em como responder...'
-    ),
-  };
-  const finalPrompt = new SystemMessage(
-    'Você não conseguiu encontrar uma resposta usando suas ferramentas. Analise o histórico da conversa e explique ao usuário de forma amigável e concisa que você não pôde completar o pedido. Se possível, sugira uma alternativa. Se o usuário perguntar sobre qualquer outro assunto que não seja filmes, séries ou cinema, recuse educadamente a pergunta e o lembre de seu propósito.'
-  );
-  const finalResponseStream = await llmWithTools.stream([...history, finalPrompt]);
-  for await (const chunk of finalResponseStream) {
-    yield { type: 'chunk', content: chunk.content };
+  // <<< [SOLUÇÃO 3/3] O Plano B só é executado se a bandeira não foi levantada.
+  if (!finalAnswerGenerated) {
+    // LOG 7: O que aconteceu depois que o loop principal terminou?
+    console.log('\n\n--- [LOG 7] AGENTE SAIU DO LOOP SEM RESPOSTA. EXECUTANDO PLANO B. ---');
+    console.log('Histórico Final antes do Plano B:', JSON.stringify(history, null, 2));
+
+    console.log(
+      '[Agente Robusto] Limite de tentativas atingido ou IA parou. Forçando resposta final.'
+    );
+    yield {
+      type: 'status',
+      message: await generateStatusMessage(
+        'Não encontrei de primeira, pensando em como responder...'
+      ),
+    };
+    const finalPrompt = new SystemMessage(
+      'Você não conseguiu encontrar uma resposta usando suas ferramentas. Analise o histórico da conversa e explique ao usuário de forma amigável e concisa que você não pôde completar o pedido. Se possível, sugira uma alternativa. Se o usuário perguntar sobre qualquer outro assunto que não seja filmes, séries ou cinema, recuse educadamente a pergunta e o lembre de seu propósito.'
+    );
+    const finalResponseStream = await llmWithTools.stream([...history, finalPrompt]);
+    for await (const chunk of finalResponseStream) {
+      yield { type: 'chunk', content: chunk.content };
+    }
+  } else {
+    console.log('\n\n--- [LOG 7] AGENTE SAIU DO LOOP COM SUCESSO. PLANO B IGNORADO. ---');
   }
 };
 
 // --- FUNÇÕES EXPORTADAS ---
 
 export const streamResponse = async (conversationId: string, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream'); // conexão que ficará aberta para eu enviar eventos (dados) continuamente
-  res.setHeader('Cache-Control', 'no-cache'); // Impede que o navegador ou proxies guardem a resposta em cache (não ter duplicidade de informação)
-  res.setHeader('Connection', 'keep-alive'); // Pede para a conexão TCP/IP entre o servidor e o cliente permanecer aberta
-  res.flushHeaders(); // Envia esses cabeçalhos (headers) para o cliente imediatamente
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
 
   const sendEvent = (data: any) => {
     if (!res.writableEnded) {
@@ -261,30 +285,27 @@ export const streamResponse = async (conversationId: string, res: Response) => {
     const userId = getUserIdFromToken(token);
     if (!userId) throw new Error('Usuário não autenticado para o stream.');
 
-    // --- BUSCA DE DADOS ANTES DA IA ---
-    // Busca o histórico da conversa e as preferências do usuário em paralelo.
     const [chatHistory, userPreferences] = await Promise.all([
-      conversationRepo.getHistory(conversationId), // histórico da conversa
-      preferenceRepo.getPreferencesByUserId(userId), // preferencias que o usuário tem salvo no bd
+      conversationRepo.getHistory(conversationId),
+      preferenceRepo.getPreferencesByUserId(userId),
     ]);
 
-    // --- MONTAGEM DO PROMPT DINÂMICO ---
     let systemPrompt =
       "Você é 'Garimpo', um assistente de cinema divertido e especialista. Seu único propósito é ajudar usuários a encontrar os melhores filmes. Responda sempre em português do Brasil. " +
       'Seja direto e conciso. Não use frases de preparação como "Garimpo está se preparando...", "Aguarde um momento..." ou qualquer variação. Vá direto para a resposta final. ' +
       'Use as ferramentas disponíveis para buscar informações. ' +
+      'Para responder perguntas, primeiro considere: "Qual das minhas ferramentas pode me ajudar a encontrar a resposta mais precisa e atualizada para isso?". Apenas responda diretamente se a pergunta for uma saudação ou algo que não requer dados externos.' +
       'Passe os nomes de filmes, atores, diretores e gêneros para as ferramentas EXATAMENTE como o usuário escreveu ou como eles apareceram em resultados anteriores. Não tente traduzir nada.' +
+      'Quando você usar uma ferramenta para buscar filmes por ano, analise os resultados e apresente apenas os filmes que correspondem estritamente ao ano solicitado pelo usuário. Ignore os outros.' +
       'Quando você chamar ferramentas, antes de fazer a chamada, diga que você vai chamar a ferramenta';
 
     const fullHistory: (SystemMessage | HumanMessage | AIMessage | ToolMessage)[] = [
       new SystemMessage(systemPrompt),
     ];
 
-    // Se houver preferências, criamos uma mensagem "falsa" do usuário.
     if (userPreferences) {
       const preferenceParts: string[] = [];
 
-      // Preferências POSITIVAS
       if (userPreferences.favorite_genres?.length > 0) {
         preferenceParts.push(
           `meus gêneros favoritos são: ${userPreferences.favorite_genres.join(', ')}`
@@ -316,7 +337,6 @@ export const streamResponse = async (conversationId: string, res: Response) => {
         );
       }
 
-      // Preferências NEGATIVAS
       if (userPreferences.disliked_genres?.length > 0) {
         preferenceParts.push(
           `os gêneros que eu NÃO gosto são: ${userPreferences.disliked_genres.join(', ')}`
@@ -328,17 +348,16 @@ export const streamResponse = async (conversationId: string, res: Response) => {
         );
       }
 
-      // SÓ DEPOIS DE COLETAR TUDO, CRIA A STRING E ENVIA PARA A IA
       if (preferenceParts.length > 0) {
-        const prefsString = `Lembre-se das minhas preferências: ${preferenceParts.join('. ')}.`; // Usei ponto para separar melhor.
+        const prefsString = `Lembre-se das minhas preferências: ${preferenceParts.join('. ')}.`;
         fullHistory.push(new HumanMessage(prefsString));
+        // AQUI ESTÁ A CORREÇÃO
         fullHistory.push(new AIMessage('Entendido, guardei suas preferências!'));
       }
     }
 
     fullHistory.push(...chatHistory);
 
-    // O agente agora é chamado com o histórico já enriquecido.
     const stream = runRobustAgent(fullHistory, userId);
 
     for await (const event of stream) {
