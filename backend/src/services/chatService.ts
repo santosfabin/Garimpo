@@ -1,3 +1,5 @@
+// backend/src/services/chatService.ts
+
 import { ChatOpenAI } from '@langchain/openai';
 import {
   AIMessage,
@@ -12,6 +14,7 @@ import { Response } from 'express';
 import { toolSchemas, executeTool, UnknownToolError } from './tools';
 import { getUserIdFromToken } from '../utils/getUserIdFromToken';
 import * as preferenceRepo from '../repository/preferenceRepository';
+import crypto from 'crypto';
 
 // --- CONFIGURAÇÃO DOS MODELOS E FERRAMENTAS ---
 const llm = new ChatOpenAI({
@@ -78,7 +81,12 @@ const runRobustAgent = async function* (
 ): AsyncGenerator<any> {
   const MAX_TURNS = 3;
   let history = [...initialHistory];
-  let finalAnswerGenerated = false; // <<< [SOLUÇÃO 1/3] Inicializa a bandeira
+  let finalAnswerGenerated = false;
+
+  const processId = crypto.randomUUID();
+  yield { type: 'process_start', processId };
+
+  const thoughtLogForDB = []; // <<< NOVO: Array para acumular logs para o DB
 
   // LOG 0: O que o agente recebeu no início de tudo?
   console.log('--- [LOG 0] INÍCIO DO AGENTE ---');
@@ -113,9 +121,8 @@ const runRobustAgent = async function* (
       const toolArgs = JSON.parse(toolToRun.args);
 
       console.log(`[Agente Robusto] Despachando ferramenta #${index}: ${toolToRun.name}`);
-      console.log(`[Agente Robusto] >> Argumentos:`, toolArgs); // Adicione esta linha
+      console.log(`[Agente Robusto] >> Argumentos:`, toolArgs);
 
-      console.log(`[Agente Robusto] Despachando ferramenta #${index}: ${toolToRun.name}`);
       const promise = executeTool(toolToRun.name, { toolArgs, userId }).then(output => {
         const content =
           typeof output === 'string' || output === null
@@ -164,8 +171,22 @@ const runRobustAgent = async function* (
           if (toolChunkIndex > latestToolIndex) {
             latestToolIndex = toolChunkIndex;
             if (latestToolIndex > 0) {
+              const prevToolToRun = toolCallBuilders[latestToolIndex - 1];
+              if (prevToolToRun?.name && prevToolToRun?.args) {
+                const logEvent = {
+                  type: 'log_step',
+                  processId,
+                  logType: 'tool_call',
+                  payload: {
+                    toolName: prevToolToRun.name,
+                    toolArgs: JSON.parse(prevToolToRun.args),
+                  },
+                };
+                thoughtLogForDB.push(logEvent); // Salva no array para o DB
+                yield logEvent; // Envia para o frontend
+              }
               const statusMessage = await dispatchTool(latestToolIndex - 1);
-              yield statusMessage;
+              if (statusMessage) yield statusMessage;
             }
           }
         }
@@ -184,7 +205,20 @@ const runRobustAgent = async function* (
     const hasToolCalls = toolCallBuilders.length > 0;
 
     if (hasToolCalls) {
-      // GATILHO FINAL: O fim do stream é o gatilho para despachar a última ferramenta.
+      const lastToolToRun = toolCallBuilders[latestToolIndex];
+      if (lastToolToRun?.name && lastToolToRun?.args) {
+        const logEvent = {
+          type: 'log_step',
+          processId,
+          logType: 'tool_call',
+          payload: {
+            toolName: lastToolToRun.name,
+            toolArgs: JSON.parse(lastToolToRun.args),
+          },
+        };
+        thoughtLogForDB.push(logEvent); // Salva no array para o DB
+        yield logEvent; // Envia para o frontend
+      }
       const finalStatusMessage = await dispatchTool(latestToolIndex);
       if (finalStatusMessage) {
         yield finalStatusMessage;
@@ -195,7 +229,6 @@ const runRobustAgent = async function* (
       );
 
       try {
-        // Aguarda todas as ferramentas despachadas (que rodam em paralelo) terminarem.
         const toolMessages = await Promise.all(dispatchedToolPromises.values());
         console.log('[Agente Robusto] Todas as ferramentas responderam.');
 
@@ -223,9 +256,6 @@ const runRobustAgent = async function* (
         return;
       }
     } else {
-      // <<< [SOLUÇÃO 2/3] Se não há 'tool_calls', a IA deu uma resposta final.
-      // A resposta já foi enviada via 'yield' no loop do stream.
-      // Portanto, levantamos a bandeira e saímos.
       console.log(
         '[Agente Robusto] Nenhuma chamada de ferramenta detectada. Resposta é considerada final.'
       );
@@ -236,8 +266,12 @@ const runRobustAgent = async function* (
     }
   }
 
+  // --- Retorna o log acumulado junto com o sucesso ---
+  if (finalAnswerGenerated) {
+    yield { type: 'process_end', thoughtLog: thoughtLogForDB };
+  }
+
   // --- PLANO B ---
-  // <<< [SOLUÇÃO 3/3] O Plano B só é executado se a bandeira não foi levantada.
   if (!finalAnswerGenerated) {
     // LOG 7: O que aconteceu depois que o loop principal terminou?
     console.log('\n\n--- [LOG 7] AGENTE SAIU DO LOOP SEM RESPOSTA. EXECUTANDO PLANO B. ---');
@@ -279,6 +313,7 @@ export const streamResponse = async (conversationId: string, res: Response) => {
   };
 
   let finalAnswer = '';
+  let thoughtLogToSave: object | null = null; // <<< NOVO: Variável para guardar o log final
 
   try {
     const token = (res.req as any).cookies.session_id;
@@ -351,7 +386,6 @@ export const streamResponse = async (conversationId: string, res: Response) => {
       if (preferenceParts.length > 0) {
         const prefsString = `Lembre-se das minhas preferências: ${preferenceParts.join('. ')}.`;
         fullHistory.push(new HumanMessage(prefsString));
-        // AQUI ESTÁ A CORREÇÃO
         fullHistory.push(new AIMessage('Entendido, guardei suas preferências!'));
       }
     }
@@ -361,17 +395,23 @@ export const streamResponse = async (conversationId: string, res: Response) => {
     const stream = runRobustAgent(fullHistory, userId);
 
     for await (const event of stream) {
-      if (event.type === 'status') {
+      if (event.type === 'status' || event.type === 'log_step' || event.type === 'process_start') {
         sendEvent(event);
       } else if (event.type === 'chunk' && event.content) {
         finalAnswer += event.content;
         sendEvent(event);
+      } else if (event.type === 'process_end') {
+        // <<< NOVO: Captura o log final
+        thoughtLogToSave = event.thoughtLog;
       }
     }
 
     if (finalAnswer) {
-      await conversationRepo.addMessage(conversationId, 'ai', finalAnswer);
-      console.log(`[Stream] Resposta completa salva no DB para a conversa ${conversationId}.`);
+      // Passa o log acumulado para a função addMessage
+      await conversationRepo.addMessage(conversationId, 'ai', finalAnswer, thoughtLogToSave);
+      console.log(
+        `[Stream] Resposta completa e log salvos no DB para a conversa ${conversationId}.`
+      );
     }
   } catch (error) {
     console.error('Erro durante o processamento do stream:', error);

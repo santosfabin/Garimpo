@@ -29,6 +29,7 @@ CREATE TABLE messages (
     conversation_id UUID NOT NULL,
     sender sender_type NOT NULL,
     message_text TEXT NOT NULL,
+    thought_log JSONB NULL,
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_conversation

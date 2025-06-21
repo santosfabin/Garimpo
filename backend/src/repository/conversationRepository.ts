@@ -29,28 +29,39 @@ export const createConversation = async (userId: string, title: string) => {
  * @param conversationId - O ID da conversa onde a mensagem será adicionada.
  * @param sender - Quem enviou a mensagem ('user' ou 'ai').
  * @param text - O conteúdo da mensagem.
+ * @param thoughtLog - (Opcional) O log de pensamento da IA, como um objeto JSON.
  */
-export const addMessage = async (conversationId: string, sender: 'user' | 'ai', text: string) => {
+export const addMessage = async (
+  conversationId: string,
+  sender: 'user' | 'ai',
+  text: string,
+  thoughtLog: object | null = null
+) => {
   const client: PoolClient = await pool.connect();
   try {
-    await client.query('BEGIN'); // Inicia a transação
+    await client.query('BEGIN');
 
     const updateQuery = `UPDATE conversations SET updated_at = NOW() WHERE id = $1;`;
     await client.query(updateQuery, [conversationId]);
 
-    const insertQuery = `INSERT INTO messages (conversation_id, sender, message_text) VALUES ($1, $2, $3);`;
-    await client.query(insertQuery, [conversationId, sender, text]);
+    const insertQuery = `
+      INSERT INTO messages (conversation_id, sender, message_text, thought_log) 
+      VALUES ($1, $2, $3, $4);
+    `;
 
-    await client.query('COMMIT'); // Confirma a transação
+    const values = [conversationId, sender, text, thoughtLog ? JSON.stringify(thoughtLog) : null];
+    await client.query(insertQuery, values);
+
+    await client.query('COMMIT');
     console.log(
       `[Repo] Mensagem do tipo '${sender}' adicionada e conversa ${conversationId} atualizada.`
     );
   } catch (error) {
-    await client.query('ROLLBACK'); // Desfaz a transação em caso de erro
+    await client.query('ROLLBACK');
     console.error('Erro ao adicionar mensagem no repositório:', error);
     throw new Error('Não foi possível salvar a mensagem.');
   } finally {
-    client.release(); // Libera o cliente de volta para o pool
+    client.release();
   }
 };
 
@@ -90,8 +101,6 @@ export const getHistory = async (conversationId: string): Promise<(HumanMessage 
     `;
     const { rows } = await pool.query(query, [conversationId]);
 
-    // Mapeia os resultados do banco para as classes de mensagem do LangChain.
-    // Isso é crucial para o LLM entender o fluxo da conversa (quem disse o quê).
     const history = rows.map(row => {
       if (row.sender === 'user') {
         return new HumanMessage(row.message_text);
@@ -129,34 +138,29 @@ export const getConversationsForUser = async (userId: string) => {
   }
 };
 
-/**
- * NOVA FUNÇÃO: Busca todas as mensagens de uma conversa (semelhante ao getHistory, mas para o endpoint)
- */
 export const getMessagesByConversationId = async (conversationId: string, userId: string) => {
   const ownerId = await getConversationOwner(conversationId);
   if (ownerId !== userId) {
     throw new Error('Acesso negado.');
   }
 
-  // Lógica de busca do histórico
   const query = `
-    SELECT id, sender, message_text 
+    SELECT id, sender, message_text, thought_log -- <<< SELECIONA A NOVA COLUNA
     FROM messages 
     WHERE conversation_id = $1 
     ORDER BY timestamp ASC;
   `;
   const { rows } = await pool.query(query, [conversationId]);
 
-  // Retorna os dados brutos do banco, que são mais fáceis de usar no frontend
   return rows.map(row => ({
     id: row.id,
     sender: row.sender,
     text: row.message_text,
+    thoughtLog: row.thought_log,
   }));
 };
 
 export const deleteConversation = async (conversationId: string, userId: string) => {
-  // A verificação de propriedade é crucial para segurança.
   const ownerId = await getConversationOwner(conversationId);
   if (ownerId !== userId) {
     throw new Error('Acesso negado.');
