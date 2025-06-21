@@ -269,3 +269,17 @@
 .ai-message.is-empty {
   display: none;
 }
+
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%; /* Mantém o mesmo max-width da mensagem */
+}
+
+.user-wrapper {
+  align-self: flex-end; /* Alinha o wrapper do usuário à direita */
+}
+
+.ai-wrapper {
+  align-self: flex-start; /* Alinha o wrapper da IA à esquerda */
+}

@@ -1,0 +1,56 @@
+.thought-process {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background-color: rgba(255, 255, 255, 0.03);
+  font-size: 0.9em;
+}
+
+.thought-process-summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  outline: none;
+  color: var(--text-secondary);
+  font-style: italic;
+  transition: background-color 0.2s;
+}
+
+.thought-process-summary:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.thought-process-summary::marker {
+  color: var(--brand-color);
+}
+
+.thought-process-content {
+  /* Adiciona um padding no topo para o espaçamento que faltava */
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.log-step {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Adiciona um espaço e uma linha entre os passos */
+.log-step + .log-step {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+/* Garante que o markdown não adicione margens extras */
+.log-step p {
+  margin: 0;
+}
+
+/* Mantém o estilo para o código inline */
+.log-step code {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #c7c9ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+}

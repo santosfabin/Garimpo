@@ -1,21 +1,37 @@
+// frontend/src/pages/ChatPage.tsx
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './ChatPage.css';
 import ConversationSidebar from '../components/ConversationSidebar';
 import Modal from '../components/Modal';
-import SkeletonMessage from '../components/SkeletonMessage'; // Importe o novo componente
+import SkeletonMessage from '../components/SkeletonMessage';
+import ThoughtProcess from '../components/ThoughtProcess';
+
+// <<< Definição do LogStep movida para cima para ser usada em Message
+interface LogStep {
+  logType: 'tool_call' | 'tool_result';
+  payload: any;
+}
 
 interface Message {
   id: string;
   sender: 'user' | 'ai' | 'status';
   text: string;
+  processId?: string; // Usado para tracking em tempo real
+  thoughtLog?: LogStep[]; // <<< NOVO: Para logs carregados do DB
+}
+
+interface ThoughtProcesses {
+  [processId: string]: LogStep[];
 }
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [thoughtProcesses, setThoughtProcesses] = useState<ThoughtProcesses>({});
+
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingHistory, setIsFetchingHistory] = useState(false); // Novo estado para o histórico
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -26,7 +42,6 @@ export default function ChatPage() {
   const [refetchTrigger, setRefetchTrigger] = useState(0);
 
   const messageListRef = useRef<HTMLDivElement>(null);
-  // Ref adicionada para o textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const toggleSidebar = () => {
@@ -37,9 +52,8 @@ export default function ChatPage() {
     if (messageListRef.current) {
       messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, thoughtProcesses]);
 
-  // Efeito para o textarea
   useEffect(() => {
     if (textareaRef.current) {
       const maxHeight = 200;
@@ -58,25 +72,42 @@ export default function ChatPage() {
   const handleSelectConversation = async (id: string) => {
     if (isLoading && id !== activeConversationId) return;
 
-    setIsFetchingHistory(true); // Ativa o skeleton loader
+    setIsFetchingHistory(true);
     setActiveConversationId(id);
-    setMessages([]); // Limpa as mensagens antigas para dar lugar ao skeleton
+    setMessages([]);
+    setThoughtProcesses({});
 
     try {
       const response = await fetch(`/api/conversations/${id}/messages`);
       if (!response.ok) throw new Error('Falha ao carregar histórico.');
 
       const historyData = await response.json();
-      const formattedMessages: Message[] = historyData.map((msg: any) => ({
-        id: msg.id.toString(),
-        sender: msg.sender,
-        text: msg.text,
-      }));
+
+      const formattedMessages: Message[] = [];
+      const loadedThoughtProcesses: ThoughtProcesses = {};
+
+      // <<< LÓGICA DE CARREGAMENTO ATUALIZADA
+      historyData.forEach((msg: any) => {
+        formattedMessages.push({
+          id: msg.id.toString(),
+          sender: msg.sender,
+          text: msg.text,
+          thoughtLog: msg.thoughtLog, // Passa o log, se existir
+        });
+
+        // Se a mensagem da IA tem um log salvo, popula o estado de logs
+        if (msg.sender === 'ai' && msg.thoughtLog) {
+          // Usamos o ID da mensagem como a chave para os logs
+          loadedThoughtProcesses[msg.id.toString()] = msg.thoughtLog;
+        }
+      });
+
       setMessages(formattedMessages);
+      setThoughtProcesses(loadedThoughtProcesses); // <<< Popula o estado com os logs carregados
     } catch (error: any) {
       setMessages([{ id: 'err-1', sender: 'status', text: error.message }]);
     } finally {
-      setIsFetchingHistory(false); // Desativa o skeleton loader
+      setIsFetchingHistory(false);
     }
   };
 
@@ -84,6 +115,7 @@ export default function ChatPage() {
     setActiveConversationId(null);
     setMessages([]);
     setInputValue('');
+    setThoughtProcesses({});
   };
 
   const handleLogout = () => {
@@ -97,10 +129,9 @@ export default function ChatPage() {
     const currentInput = inputValue.trim();
     const userMessage: Message = { id: `user-${Date.now()}`, sender: 'user', text: currentInput };
 
-    // --- CORREÇÃO #1: Declarar o ID do status AQUI ---
     const statusMessageId = `status-placeholder-${Date.now()}`;
     const statusPlaceholder: Message = {
-      id: statusMessageId, // Usar o ID correto
+      id: statusMessageId,
       sender: 'status',
       text: 'Garimpo está se preparando...',
     };
@@ -128,17 +159,29 @@ export default function ChatPage() {
       const eventSource = new EventSource(`/api/chat/stream/${currentConvId}`);
 
       let aiMessageId = '';
+      let currentProcessId = '';
 
-      const updateMessageById = (updateFn: (msg: Message) => Message) => {
-        setMessages(prev => prev.map(msg => (msg.id === aiMessageId ? updateFn(msg) : msg)));
-      };
       let isFirstChunk = true;
 
       eventSource.onmessage = event => {
         const data = JSON.parse(event.data);
         switch (data.type) {
+          case 'process_start':
+            currentProcessId = data.processId;
+            setThoughtProcesses(prev => ({ ...prev, [currentProcessId]: [] }));
+            break;
+
+          case 'log_step':
+            if (data.processId) {
+              const newStep: LogStep = { logType: data.logType, payload: data.payload };
+              setThoughtProcesses(prev => ({
+                ...prev,
+                [data.processId]: [...(prev[data.processId] || []), newStep],
+              }));
+            }
+            break;
+
           case 'status':
-            // --- CORREÇÃO #2: Usar o ID do status para encontrar a mensagem certa ---
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === statusMessageId ? { ...msg, sender: 'status', text: data.message } : msg
@@ -151,10 +194,14 @@ export default function ChatPage() {
               isFirstChunk = false;
               aiMessageId = `ai-response-${Date.now()}`;
 
-              // --- CORREÇÃO #3: Usar o ID do status para filtrar ---
               setMessages(prev => [
                 ...prev.filter(msg => msg.id !== statusMessageId),
-                { id: aiMessageId, sender: 'ai', text: data.content || '' },
+                {
+                  id: aiMessageId,
+                  sender: 'ai',
+                  text: data.content || '',
+                  processId: currentProcessId,
+                },
               ]);
             } else {
               setMessages(prev =>
@@ -164,20 +211,28 @@ export default function ChatPage() {
               );
             }
             break;
+          case 'process_end': // <<< NOVO: Lida com o fim do processo
+            // Não precisa fazer nada aqui, o log já foi salvo no backend.
+            // Opcional: poderia usar isso para algum feedback final.
+            break;
           case 'close':
             eventSource.close();
             setIsLoading(false);
+            // Ao fechar a conexão, se foi um chat novo, recarrega a conversa para obter os IDs e logs corretos do DB.
+            if (!activeConversationId) {
+              handleSelectConversation(currentConvId);
+            }
             break;
         }
       };
       eventSource.onerror = () => {
-        updateMessageById(msg => ({ ...msg, sender: 'status', text: 'Erro de conexão.' }));
-        eventSource.close();
+        setMessages(prev => prev.filter(m => m.id !== statusMessageId));
         setIsLoading(false);
+        eventSource.close();
       };
     } catch (err: any) {
       setMessages(prev => [
-        ...prev,
+        ...prev.filter(m => m.sender !== 'status'),
         { id: `status-${Date.now()}`, sender: 'status', text: err.message },
       ]);
       setIsLoading(false);
@@ -243,8 +298,20 @@ export default function ChatPage() {
           ) : messages.length > 0 ? (
             <div className="message-list">
               {messages.map(msg => (
-                <div key={msg.id} className={`message ${msg.sender}-message`}>
-                  {msg.sender === 'ai' ? <ReactMarkdown>{msg.text}</ReactMarkdown> : msg.text}
+                <div key={msg.id} className={`message-wrapper ${msg.sender}-wrapper`}>
+                  {/* <<< LÓGICA DE RENDERIZAÇÃO ATUALIZADA */}
+                  {msg.sender === 'ai' && (
+                    <ThoughtProcess
+                      // Se o log foi carregado do DB, use o ID da mensagem como chave.
+                      // Se está sendo gerado em tempo real, use o processId.
+                      steps={
+                        thoughtProcesses[msg.id] || thoughtProcesses[msg.processId || ''] || []
+                      }
+                    />
+                  )}
+                  <div className={`message ${msg.sender}-message`}>
+                    {msg.sender === 'ai' ? <ReactMarkdown>{msg.text}</ReactMarkdown> : msg.text}
+                  </div>
                 </div>
               ))}
             </div>
@@ -284,7 +351,6 @@ export default function ChatPage() {
                 width="20"
                 height="20"
                 viewBox="0 0 24 24"
-                // CORRIGIDO: O ícone estava sem cor
                 fill="currentColor"
                 stroke="currentColor"
                 strokeWidth="2"
@@ -304,13 +370,10 @@ export default function ChatPage() {
         onConfirm={confirmDelete}
         title="Confirmar Exclusão"
       >
-        {/* O texto principal continua como um parágrafo */}
         <p>
           Você tem certeza que deseja apagar a conversa "
           <strong>{conversationToDelete?.title}</strong>"?
         </p>
-
-        {/* O aviso agora está dentro de uma div com uma classe específica */}
         <div className="modal-warning">Esta ação não pode ser desfeita.</div>
       </Modal>
     </div>
