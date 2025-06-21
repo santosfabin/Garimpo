@@ -224,7 +224,10 @@ export default function ChatPage() {
       />
       <div className="chat-page">
         <header className="chat-header">
-          <h1>Garimpo ⛏️</h1>
+          <h1>
+            Garimpo
+            <img src="/icon.png" alt="Logo de picareta" className="logo-icon" />
+          </h1>
           <button onClick={handleLogout} className="logout-button">
             Sair
           </button>

@@ -96,7 +96,7 @@ export default function ConversationSidebar({
 
       <div className="sidebar-content">
         <div className="sidebar-header">
-          <div className="brand-title">Garimpo</div>
+          <div className="brand-title"></div>
         </div>
         <div className="sidebar-actions">
           <button onClick={onNewChat} className="new-chat-button">

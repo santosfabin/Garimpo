@@ -40,7 +40,10 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <h1 className="login-title">Garimpo ⛏️</h1>
+          <h1 className="login-title">
+            Garimpo
+            <img src="/icon.png" alt="Logo de picareta" className="logo-icon" />
+          </h1>
           <p className="login-subtitle">Encontre os melhores filmes.</p>
         </div>
         <form className="login-form" onSubmit={handleLogin}>

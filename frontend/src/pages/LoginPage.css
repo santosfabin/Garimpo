@@ -1,4 +1,3 @@
-/* Animações */
 @keyframes fadeInDown {
   from {
     opacity: 0;
@@ -19,7 +18,6 @@
   }
 }
 
-/* Estilo da Página */
 .login-page {
   position: relative;
   display: flex;
@@ -27,11 +25,10 @@
   align-items: center;
   height: 100vh;
   width: 100%;
-  background-color: #0b0b0f; /* Um preto mais profundo e azulado */
+  background-color: #0b0b0f;
   overflow: hidden;
 }
 
-/* Efeito Aurora (o fundo dinâmico) */
 .login-page::before {
   content: '';
   position: absolute;
@@ -47,7 +44,6 @@
   animation: aurora 15s linear infinite;
 }
 
-/* Card de Login com Efeito Glassmorphism */
 .login-card {
   position: absolute;
   top: 50%;
@@ -56,7 +52,7 @@
   width: 100%;
   max-width: 400px;
   padding: 40px;
-  background: rgba(16, 18, 27, 0.4); /* Fundo semi-transparente */
+  background: rgba(16, 18, 27, 0.4);
   backdrop-filter: blur(16px) saturate(120%);
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -72,9 +68,16 @@
 
 .login-title {
   color: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   font-size: 2.2em;
-  font-weight: 700;
-  margin: 0;
+}
+
+.logo-icon {
+  height: 1.5em;
+  width: auto;
 }
 
 .login-subtitle {
@@ -109,7 +112,6 @@
   color: #6a6a6a;
 }
 
-/* Efeito de brilho (glow) no foco */
 .login-input:focus {
   outline: none;
   border-color: rgba(99, 102, 241, 0.7);
@@ -144,7 +146,7 @@
 }
 
 .error-message {
-  color: #f87171; /* Um vermelho mais suave */
+  color: #f87171;
   background-color: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.3);
   padding: 10px;
@@ -160,7 +162,7 @@
 }
 
 .switch-page-link a {
-  color: #818cf8; /* Uma cor azul/roxa clara */
+  color: #818cf8;
   font-weight: 500;
   text-decoration: none;
 }
