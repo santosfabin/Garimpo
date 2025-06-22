@@ -7,7 +7,7 @@ import Modal from '../components/Modal';
 import SkeletonMessage from '../components/SkeletonMessage';
 import ThoughtProcess from '../components/ThoughtProcess';
 
-// <<< Definição do LogStep movida para cima para ser usada em Message
+// Definição dos tipos
 interface LogStep {
   logType: 'tool_call' | 'tool_result';
   payload: any;
@@ -17,13 +17,37 @@ interface Message {
   id: string;
   sender: 'user' | 'ai' | 'status';
   text: string;
-  processId?: string; // Usado para tracking em tempo real
-  thoughtLog?: LogStep[]; // <<< NOVO: Para logs carregados do DB
+  processId?: string;
+  thoughtLog?: LogStep[];
 }
 
 interface ThoughtProcesses {
   [processId: string]: LogStep[];
 }
+
+// <<< [NOVO] Definição das sugestões de prompt
+const promptSuggestions = [
+  {
+    title: 'O que está em cartaz?',
+    subtitle: 'Informação em tempo real',
+    prompt: 'Me fale o que está passando no cinema hoje',
+  },
+  {
+    title: 'Onde assistir?',
+    subtitle: 'Informação prática',
+    prompt: 'Onde posso assistir o filme do Homem de Ferro?',
+  },
+  {
+    title: 'Recomende algo parecido com o filme Interestelar',
+    subtitle: 'Recomendação personalizada',
+    prompt: "Gostei de 'Interestelar', pode me recomendar filmes parecidos?",
+  },
+  {
+    title: 'Detalhes do filme A Origem',
+    subtitle: 'Conhecimento detalhado',
+    prompt: "Me fale mais sobre o filme 'A Origem', incluindo o elenco principal.",
+  },
+];
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -86,24 +110,21 @@ export default function ChatPage() {
       const formattedMessages: Message[] = [];
       const loadedThoughtProcesses: ThoughtProcesses = {};
 
-      // <<< LÓGICA DE CARREGAMENTO ATUALIZADA
       historyData.forEach((msg: any) => {
         formattedMessages.push({
           id: msg.id.toString(),
           sender: msg.sender,
           text: msg.text,
-          thoughtLog: msg.thoughtLog, // Passa o log, se existir
+          thoughtLog: msg.thoughtLog,
         });
 
-        // Se a mensagem da IA tem um log salvo, popula o estado de logs
         if (msg.sender === 'ai' && msg.thoughtLog) {
-          // Usamos o ID da mensagem como a chave para os logs
           loadedThoughtProcesses[msg.id.toString()] = msg.thoughtLog;
         }
       });
 
       setMessages(formattedMessages);
-      setThoughtProcesses(loadedThoughtProcesses); // <<< Popula o estado com os logs carregados
+      setThoughtProcesses(loadedThoughtProcesses);
     } catch (error: any) {
       setMessages([{ id: 'err-1', sender: 'status', text: error.message }]);
     } finally {
@@ -122,6 +143,19 @@ export default function ChatPage() {
     localStorage.removeItem('isLoggedIn');
     window.location.href = '/login';
   };
+
+  // <<< [NOVO] Função que lida com o clique na sugestão
+  const handleSuggestionClick = (prompt: string) => {
+    setInputValue(prompt);
+  };
+
+  // <<< [NOVO] Efeito que envia a mensagem automaticamente ao clicar na sugestão
+  useEffect(() => {
+    const isSuggestion = promptSuggestions.some(s => s.prompt === inputValue);
+    if (isSuggestion && !isLoading) {
+      handleSendMessage();
+    }
+  }, [inputValue, isLoading]); // Adicionado isLoading como dependência para segurança
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -160,7 +194,6 @@ export default function ChatPage() {
 
       let aiMessageId = '';
       let currentProcessId = '';
-
       let isFirstChunk = true;
 
       eventSource.onmessage = event => {
@@ -193,7 +226,6 @@ export default function ChatPage() {
             if (isFirstChunk) {
               isFirstChunk = false;
               aiMessageId = `ai-response-${Date.now()}`;
-
               setMessages(prev => [
                 ...prev.filter(msg => msg.id !== statusMessageId),
                 {
@@ -211,14 +243,11 @@ export default function ChatPage() {
               );
             }
             break;
-          case 'process_end': // <<< NOVO: Lida com o fim do processo
-            // Não precisa fazer nada aqui, o log já foi salvo no backend.
-            // Opcional: poderia usar isso para algum feedback final.
+          case 'process_end':
             break;
           case 'close':
             eventSource.close();
             setIsLoading(false);
-            // Ao fechar a conexão, se foi um chat novo, recarrega a conversa para obter os IDs e logs corretos do DB.
             if (!activeConversationId) {
               handleSelectConversation(currentConvId);
             }
@@ -256,7 +285,6 @@ export default function ChatPage() {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Falha ao apagar a conversa.');
-
       handleNewChat();
       setRefetchTrigger(prev => prev + 1);
     } catch (error) {
@@ -299,11 +327,8 @@ export default function ChatPage() {
             <div className="message-list">
               {messages.map(msg => (
                 <div key={msg.id} className={`message-wrapper ${msg.sender}-wrapper`}>
-                  {/* <<< LÓGICA DE RENDERIZAÇÃO ATUALIZADA */}
                   {msg.sender === 'ai' && (
                     <ThoughtProcess
-                      // Se o log foi carregado do DB, use o ID da mensagem como chave.
-                      // Se está sendo gerado em tempo real, use o processId.
                       steps={
                         thoughtProcesses[msg.id] || thoughtProcesses[msg.processId || ''] || []
                       }
@@ -316,9 +341,25 @@ export default function ChatPage() {
               ))}
             </div>
           ) : (
+            // <<< [NOVO] Renderização condicional da tela de boas-vindas
             <div className="no-chat-selected">
-              <h2>Bem-vindo ao Garimpo!</h2>
-              <p>Selecione uma conversa ou inicie um novo chat para começar a garimpar filmes.</p>
+              <div className="welcome-header">
+                <h1>Bem vindo ao Garimpo</h1>
+                <img src="/icon.png" alt="Logo de picareta" className="welcome-logo" />
+              </div>
+              <p>Sua IA especialista em cinema. Comece uma conversa ou use uma sugestão:</p>
+              <div className="suggestion-grid">
+                {promptSuggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    className="suggestion-card"
+                    onClick={() => handleSuggestionClick(suggestion.prompt)}
+                  >
+                    <span className="suggestion-title">{suggestion.title}</span>
+                    <span className="suggestion-subtitle">{suggestion.subtitle}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </main>
