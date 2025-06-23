@@ -1,10 +1,13 @@
 # Garimpo ⛏️
 
-Bem-vindo ao Garimpo, uma aplicação full-stack que serve como um assistente de cinema inteligente. Converse com uma IA para encontrar recomendações de filmes, descobrir novas "pepitas" cinematográficas e obter detalhes sobre seus filmes favoritos.
+Bem-vindo ao **Garimpo**, uma aplicação full-stack que serve como um assistente de cinema inteligente.  
+Converse com uma IA para encontrar recomendações de filmes, descobrir novas _pepitas_ cinematográficas e obter detalhes sobre seus filmes favoritos.
 
-O projeto é construído com um backend robusto em Node.js/Express e um frontend moderno em React/Vite, totalmente integrados para uma experiência de usuário fluida e em tempo real.
+O projeto é construído com um backend robusto em **Node.js/Express** e um frontend moderno em **React/Vite**, totalmente integrados para uma experiência de usuário fluida e em tempo real.
 
-## Estrutura do Projeto
+---
+
+## 📁 Estrutura do Projeto
 
 O repositório está organizado em duas pastas principais:
 
@@ -13,60 +16,114 @@ O repositório está organizado em duas pastas principais:
 
 Para uma visão detalhada de cada parte, navegue até as respectivas pastas e consulte os seus `README.md`:
 
-- **[Documentação do Backend](./backend/README.md)**
-- **[Documentação do Frontend](./frontend/README.md)**
+- [Documentação do Backend](./backend/)
+- [Documentação do Frontend](./frontend/)
 
-## Tecnologias Principais
+---
 
-- **Frontend:** React 19, Vite, TypeScript, React Router
-- **Backend:** Node.js, Express, PostgreSQL, Docker, LangChain.js
+## 🧠 Desenvolvimento, Tecnologias e Desafios
 
-## Como Executar o Projeto Completo (com Docker)
+###  Arquitetura e Fluxo de Desenvolvimento
 
-A maneira mais simples e recomendada de rodar a aplicação completa é utilizando Docker Compose, que orquestra tanto o banco de dados quanto o backend.
+- **Comunicação em Tempo Real**  
+  Operações como login e gerenciamento de conversas usam uma API REST.  
+  Já o chat utiliza **Server-Sent Events (SSE)**, permitindo respostas contínuas em tempo real, onde o usuário vê o texto se formando ao vivo.
 
-1.  **Clone o repositório:**
+- **Lógica de Agente Inteligente**  
+  O sistema implementa um agente com múltiplos turnos, permitindo que a IA raciocine sobre quais ferramentas usar e analise os resultados antes de formular a resposta final.
 
-    ```bash
-    git clone https://github.com/santosfabin/Garimpo.git
-    cd Garimpo
-    ```
+---
 
-2.  **Configure e Inicie o Backend e o Banco de Dados:**
+## 🧰 Tecnologias Utilizadas
 
-    - Navegue até a pasta `backend`:
-      ```bash
-      cd backend
-      ```
-    - Copie o arquivo `.env.example` para um novo arquivo chamado `.env`:
-      ```bash
-      cp .env.example .env
-      ```
-    - Abra o arquivo `.env` recém-criado e preencha as seguintes chaves com seus próprios valores:
-      - `SECRET_KEY`: Uma chave secreta longa e segura para assinar os tokens JWT.
-      - `OPENAI_API_KEY`: Sua chave de API da OpenAI.
-      - `TMDB_API_KEY`: Sua chave de API do The Movie Database.
-    - Ainda na pasta `backend`, execute o Docker Compose para construir e iniciar os contêineres:
-      ```bash
-      docker-compose up --build
-      ```
-    - Isso irá construir a imagem do backend, iniciar o servidor na porta `7000` e um contêiner com o banco de dados PostgreSQL. O Docker se encarregará da rede entre os contêineres.
+### Inteligência Artificial e Integrações
 
-3.  **Inicie o Frontend:**
+- **[OpenAI (GPT-4o)](https://openai.com/gpt-4o)** – Cérebro da aplicação.
+- **[LangChain.js](https://js.langchain.com/)** – Orquestração do agente e uso de ferramentas externas.
+- **[TMDB API](https://developer.themoviedb.org/docs)** – Fonte de dados sobre filmes, gêneros e elenco.
 
-    - Abra um **novo terminal**.
-    - Na raiz do projeto, navegue até a pasta `frontend`:
-      ```bash
-      cd frontend
-      ```
-    - Instale as dependências e inicie o servidor de desenvolvimento:
-      ```bash
-      npm install
-      npm run dev
-      ```
+### Backend
 
-4.  **Acesse a Aplicação:**
-    - O frontend estará disponível em `http://localhost:5173` (ou a porta indicada pelo Vite).
-    - O backend estará rodando e acessível para o frontend em `http://localhost:7000`.
+- **Node.js + Express** – API REST e servidor SSE.
+- **TypeScript** – Tipagem estática.
+- **PostgreSQL** – Banco de dados relacional.
 
-Agora você pode acessar a aplicação no seu navegador e começar a garimpar filmes!
+### Frontend
+
+- **React** – Construção da interface.
+- **Vite** – Build moderno com HMR.
+- **React Router** – Navegação SPA.
+
+### Ambiente e Orquestração
+
+- **Docker + Docker Compose** – Setup padronizado e simples.
+
+---
+
+## 🚧 Principais Desafios Enfrentados
+
+### 1. Gerenciamento do Ciclo de Vida da Resposta
+
+**Desafio**: A IA pode precisar de múltiplos passos (pensar, agir).  
+**Solução**: Foi implementado um motor de agente em turnos, que espera a execução completa das ferramentas antes de chamar a IA novamente.
+
+### 2. Construção Confiável das Chamadas de Ferramenta
+
+**Desafio**: As decisões da IA chegam em partes fragmentadas via SSE.  
+**Solução**: Criou-se uma estrutura temporária que acumula esses fragmentos até que o turno esteja completo, garantindo dados válidos e completos para cada ferramenta.
+
+---
+
+## 🚀 Como Executar o Projeto Completo (com Docker)
+
+### 1. Clone o Repositório
+
+```bash
+git clone https://github.com/santosfabin/Garimpo.git
+cd Garimpo
+```
+
+---
+
+### 2. Configure e Inicie o Backend e Banco de Dados
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+Abra o `.env` e preencha com seus dados:
+
+- `SECRET_KEY`: Uma chave JWT segura
+- `OPENAI_API_KEY`: Sua chave da OpenAI
+- `TMDB_API_KEY`: Sua chave do The Movie Database
+
+Inicie os contêineres:
+
+```bash
+docker compose up --build
+```
+
+> 💡 Após subir os contêineres, é necessário **criar as tabelas do banco de dados**.  
+> Siga o passo 4 da [documentação do backend](./backend) para executar os comandos SQL no PostgreSQL.
+
+---
+
+### 3. Inicie o Frontend
+
+Em outro terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+### 4. Acesse a Aplicação
+
+- Frontend: [http://localhost:5173](http://localhost:5173)
+- Backend: [http://localhost:7000](http://localhost:7000)
+
+Agora você pode abrir o navegador e começar a **garimpar filmes** com o Garimpo! 🎬✨
