@@ -17,7 +17,7 @@ router.use(verifyActiveSession);
 
 router.use('/logout', logout);
 
-// Envio e recebimento de mensagem
+// Recebimento de mensagem e criação da conversa
 router.use('/chat', chat);
 
 // Gerencimanto das conversas

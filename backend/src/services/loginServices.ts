@@ -7,13 +7,13 @@ const authenticateUser = async (email: string, password: string) => {
     const userData = await loginRepository.getUserData(email);
 
     if (!userData) {
-      throw new Error('E-mail não cadastrado');
+      throw new Error('Credenciais inválidas');
     }
 
     const isPasswordValid = await comparePassword(password, userData.password);
 
     if (!isPasswordValid) {
-      throw new Error('Senha inválida');
+      throw new Error('Credenciais inválidas');
     }
 
     const user = userData.id;

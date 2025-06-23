@@ -39,8 +39,6 @@ const detailsToolSchema = {
   },
 };
 
-// backend/src/services/tools.ts
-
 export const discoverToolSchema = {
   type: 'function' as const,
   function: {

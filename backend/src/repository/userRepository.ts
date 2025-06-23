@@ -81,12 +81,13 @@ const updateUserSql = async (id: number, updatedFields: any) => {
   }
 };
 
-// e) Ajustar removeUserSql para pegar ID como parâmetro
 const removeUserSql = async (id: number) => {
   try {
     // A query já retornava os dados, o que é perfeito!
-    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id, name, email', [id]);
-    
+    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id, name, email', [
+      id,
+    ]);
+
     if (result.rowCount === 0) {
       throw new Error('Usuário não encontrado para exclusão.');
     }

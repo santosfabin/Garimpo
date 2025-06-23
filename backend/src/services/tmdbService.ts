@@ -455,8 +455,3 @@ export const getWatchProviders = async (title: string): Promise<any> => {
     return `Ocorreu um erro ao verificar onde assistir "${title}".`;
   }
 };
-
-/**
- * FERRAMENTA 11: Busca Detalhes de uma Série de TV.
- * Expande as capacidades do Garimpo para o mundo das séries.
- */
