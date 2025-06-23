@@ -1,6 +1,4 @@
-// Importa a classe principal para interagir com os modelos de chat da OpenAI.
 import { ChatOpenAI } from '@langchain/openai';
-// Importa os tipos de mensagens usados para construir o histórico da conversa (Humano, IA, Sistema, Ferramenta).
 import {
   AIMessage,
   AIMessageChunk,
@@ -8,25 +6,17 @@ import {
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
-// Importa as configurações da aplicação, como a chave da API da OpenAI.
 import config from '../config';
-// Importa funções para interagir com o repositório de conversas no banco de dados.
 import * as conversationRepo from '../repository/conversationRepository';
-// Importa o tipo 'Response' do Express para lidar com a resposta HTTP.
 import { Response } from 'express';
-// Importa as definições (schemas) das ferramentas e a função para executá-las.
 import { toolSchemas, executeTool, UnknownToolError } from './tools';
-// Importa uma função utilitária para extrair o ID do usuário de um token de sessão.
 import { getUserIdFromToken } from '../utils/getUserIdFromToken';
-// Importa funções para interagir com o repositório de preferências do usuário.
 import * as preferenceRepo from '../repository/preferenceRepository';
-// Importa o módulo 'crypto' do Node.js para gerar IDs únicos.
 import crypto from 'crypto';
 
 // --- CONFIGURAÇÃO DOS MODELOS E FERRAMENTAS ---
 
 // Configura o modelo de linguagem principal (LLM) que será usado para o chat.
-// 'gpt-4o' é o modelo escolhido.
 // 'temperature: 0' torna as respostas mais determinísticas e menos criativas.
 const llm = new ChatOpenAI({
   modelName: 'gpt-4o',
@@ -35,7 +25,7 @@ const llm = new ChatOpenAI({
 });
 
 // Cria uma versão do LLM "vinculada" (bound) às ferramentas disponíveis.
-// Isso informa ao modelo quais ferramentas ele pode "chamar".
+// Isso informa ao modelo quais ferramentas ele pode chamar.
 const llmWithTools = llm.bind({
   tools: toolSchemas,
 });
@@ -61,7 +51,6 @@ const generateStatusMessage = async (
   toolName?: string,
   toolArgs?: any
 ): Promise<string> => {
-  // Cria uma cópia segura dos argumentos para evitar modificar o objeto original.
   const safeArgs = { ...toolArgs };
   // Remove o ID do usuário dos argumentos para não enviá-lo à OpenAI.
   if (safeArgs.userId) {
@@ -83,7 +72,7 @@ const generateStatusMessage = async (
   Agora, gere a frase.`;
 
   try {
-    // Chama a IA narradora em modo de streaming para obter a resposta o mais rápido possível.
+    // Chama a IA narradora em modo de streaming.
     const stream = await statusNarratorLlm.stream(finalPrompt);
     let narratorResponseContent = '';
     // Concatena os pedaços (chunks) da resposta da IA.

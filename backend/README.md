@@ -32,15 +32,21 @@ Este é o método mais simples e completo para rodar o ambiente.
 
 - O comando `-d` (detached) executa os contêineres em segundo plano.
   ```bash
-  docker-compose up --build -d
+  docker compose up --build -d
   ```
 - Aguarde alguns segundos para o serviço `db` iniciar completamente.
+
+- Para ver os logs do backend use esse comando:
+
+  ```bash
+  docker compose logs -f backend-web
+  ```
 
 4.  **Crie as tabelas no banco de dados:**
 
 - Para interagir com o banco de dados dentro do contêiner, primeiro abra um terminal `psql`:
   ```bash
-  docker-compose exec db psql -U meuuser -d meubanco
+  docker compose exec db psql -U meuuser -d meubanco
   ```
 - Agora, com o terminal `psql` aberto, copie e cole os blocos de código SQL abaixo, um por um, para criar a estrutura do banco.
 

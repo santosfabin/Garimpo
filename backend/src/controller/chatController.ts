@@ -39,7 +39,7 @@ export const handleChatRequest = async (req: Request, res: Response) => {
       const ownerId = await conversationRepo.getConversationOwner(conversationId);
       if (!ownerId || ownerId !== userId) {
         // Se não for o dono, encerra a requisição com status 403 (Proibido).
-        return res.status(403).end();
+        return res.status(404).end();
       }
     } else {
       // Se nenhum ID foi enviado, é uma nova conversa.
@@ -96,7 +96,7 @@ export const streamChatResponse = async (req: Request, res: Response) => {
     await chatService.streamResponse(conversationId, res);
   } catch (error) {
     console.error(`Erro ao iniciar o stream para a conversa ${conversationId}:`, error);
-    // Se houver um erro antes de o stream começar, encerra a conexão.
+    // Se houver um erro encerra a conexão.
     res.end();
   }
 };
